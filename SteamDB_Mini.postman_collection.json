@@ -1,0 +1,209 @@
+{
+  "info": {
+    "name": "SteamDB Mini API",
+    "description": "Complete API collection for SteamDB Mini — Django REST Framework backend\nTeam: Bekeshov Arsen, Shynbulat Kazbek, Naseken Olzhas",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "steamdb-mini-v1"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000/api", "type": "string" },
+    { "key": "token", "value": "", "type": "string", "description": "Set after login/register" }
+  ],
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "var json = pm.response.json();",
+            "if (json.token) { pm.collectionVariables.set('token', json.token); pm.test('Token saved', () => true); }"
+          ], "type": "text/javascript" }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"testuser\",\n  \"email\": \"test@example.com\",\n  \"password\": \"pass1234\",\n  \"password2\": \"pass1234\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/register/", "host": ["{{base_url}}"], "path": ["auth", "register", ""] }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "var json = pm.response.json();",
+            "if (json.token) { pm.collectionVariables.set('token', json.token); pm.test('Token saved', () => true); }"
+          ], "type": "text/javascript" }}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"testuser\",\n  \"password\": \"pass1234\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/login/", "host": ["{{base_url}}"], "path": ["auth", "login", ""] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{base_url}}/auth/logout/", "host": ["{{base_url}}"], "path": ["auth", "logout", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🎮 Games (CRUD)",
+      "item": [
+        {
+          "name": "List Games",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/games/", "host": ["{{base_url}}"], "path": ["games", ""] }
+          }
+        },
+        {
+          "name": "Create Game (auth)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Counter-Strike 2\",\n  \"description\": \"The world's most popular FPS.\",\n  \"steam_appid\": 730,\n  \"genres\": [\"Action\", \"FPS\"],\n  \"tags\": [\"Multiplayer\", \"Competitive\"],\n  \"price\": 0,\n  \"is_free\": true\n}" },
+            "url": { "raw": "{{base_url}}/games/", "host": ["{{base_url}}"], "path": ["games", ""] }
+          }
+        },
+        {
+          "name": "Get Game by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/games/1/", "host": ["{{base_url}}"], "path": ["games", "1", ""] }
+          }
+        },
+        {
+          "name": "Update Game (auth)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Counter-Strike 2 (Updated)\",\n  \"description\": \"Updated description.\"\n}" },
+            "url": { "raw": "{{base_url}}/games/1/", "host": ["{{base_url}}"], "path": ["games", "1", ""] }
+          }
+        },
+        {
+          "name": "Delete Game (auth)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/games/1/", "host": ["{{base_url}}"], "path": ["games", "1", ""] }
+          }
+        },
+        {
+          "name": "Get Stats History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/games/1/stats/", "host": ["{{base_url}}"], "path": ["games", "1", "stats", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🟦 Steam API Proxy",
+      "item": [
+        {
+          "name": "Get Live Player Count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/steam/players/730/",
+              "host": ["{{base_url}}"],
+              "path": ["steam", "players", "730", ""],
+              "variable": [{ "key": "appid", "value": "730", "description": "CS2=730, Dota2=570, Elden Ring=1245620" }]
+            }
+          }
+        },
+        {
+          "name": "Get Steam App Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/steam/appinfo/730/", "host": ["{{base_url}}"], "path": ["steam", "appinfo", "730", ""] }
+          }
+        },
+        {
+          "name": "Import Game from Steam (auth)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{base_url}}/steam/appinfo/1245620/", "host": ["{{base_url}}"], "path": ["steam", "appinfo", "1245620", ""] }
+          }
+        },
+        {
+          "name": "Top 20 Games by Players",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/steam/top/", "host": ["{{base_url}}"], "path": ["steam", "top", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👤 Profile & Wishlist",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/profile/", "host": ["{{base_url}}"], "path": ["profile", ""] }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"steam_id\": \"76561198012345678\"\n}" },
+            "url": { "raw": "{{base_url}}/profile/", "host": ["{{base_url}}"], "path": ["profile", ""] }
+          }
+        },
+        {
+          "name": "Add to Wishlist",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Token {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{base_url}}/profile/wishlist/1/", "host": ["{{base_url}}"], "path": ["profile", "wishlist", "1", ""] }
+          }
+        },
+        {
+          "name": "Remove from Wishlist",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Token {{token}}" }],
+            "url": { "raw": "{{base_url}}/profile/wishlist/1/", "host": ["{{base_url}}"], "path": ["profile", "wishlist", "1", ""] }
+          }
+        }
+      ]
+    }
+  ]
+}
