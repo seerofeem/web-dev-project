@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../../services/api.service';
-import { Game, OnlineStats } from '../../interfaces/models';
+import { Developer, Game, OnlineStats } from '../../interfaces/models';
 
 @Component({
   selector: 'app-game-detail',
@@ -152,7 +152,7 @@ import { Game, OnlineStats } from '../../interfaces/models';
                   <div class="info-row">
                     <span class="info-key">DEVELOPER</span>
                     <span class="info-val">
-                      {{ game.developers?.map(d => d.name).join(', ') || '—' }}
+                      {{ formatDevelopers(game.developers) }}
                     </span>
                   </div>
                   <div class="info-row">
@@ -418,6 +418,11 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
         this.inWishlist = profile.wishlist.some(g => g.id === this.game!.id);
       }
     });
+  }
+
+  formatDevelopers(developers?: Developer[]): string {
+    const names = developers?.map(dev => dev.name).filter(Boolean) ?? [];
+    return names.length ? names.join(', ') : '—';
   }
 
   goBack(): void { this.router.navigate(['/']); }
