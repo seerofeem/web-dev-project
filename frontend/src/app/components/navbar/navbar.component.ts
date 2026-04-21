@@ -195,7 +195,7 @@ interface SearchResult {
       flex-direction: column;
       gap: 10px;
       padding: 8px 18px 12px;
-      position: sticky;
+      position: static;
       top: 0;
       z-index: 220;
     }
