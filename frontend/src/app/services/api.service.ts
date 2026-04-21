@@ -8,7 +8,7 @@ import {
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  private readonly API = 'http://localhost:8000/api';
+  private readonly API = this.resolveApiUrl();
 
   private _isLoggedIn$ = new BehaviorSubject<boolean>(!!localStorage.getItem('token'));
   private _username$ = new BehaviorSubject<string>(localStorage.getItem('username') || '');
@@ -17,6 +17,15 @@ export class ApiService {
   username$ = this._username$.asObservable();
 
   constructor(private http: HttpClient) {}
+
+  private resolveApiUrl(): string {
+    const appWindow = window as Window & {
+      __APP_CONFIG__?: { apiUrl?: string };
+    };
+    const configuredApiUrl = appWindow.__APP_CONFIG__?.apiUrl?.trim();
+
+    return (configuredApiUrl || 'http://localhost:8000/api').replace(/\/+$/, '');
+  }
 
   // ── Auth ──────────────────────────────────────────────────────────
 
