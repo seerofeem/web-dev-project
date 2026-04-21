@@ -1,0 +1,54 @@
+
+> steamdb-mini-frontend@0.0.1 ng
+> ng serve --host 127.0.0.1 --port 4201
+
+Initial chunk files | Names                 |  Raw size
+polyfills.js        | polyfills             |  88.09 kB | 
+styles.css          | styles                |  28.16 kB | 
+main.js             | main                  |  12.76 kB | 
+chunk-PY4RX23U.js   | -                     |   4.42 kB | 
+
+                    | Initial total         | 133.42 kB
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-PIBHIGEX.js   | home-component        | 103.17 kB | 
+chunk-KVDYFKFS.js   | game-detail-component |  55.04 kB | 
+chunk-BV7IPK5I.js   | profile-component     |  20.76 kB | 
+chunk-N4NQPYTE.js   | login-component       |  16.70 kB | 
+
+Application bundle generation complete. [1.760 seconds]
+
+Watch mode enabled. Watching for file changes...
+  ➜  Local:   http://127.0.0.1:4201/
+Application bundle generation failed. [0.725 seconds]
+
+Application bundle generation failed. [0.521 seconds]
+
+Application bundle generation failed. [0.409 seconds]
+
+Initial chunk files | Names                 |  Raw size
+polyfills.js        | polyfills             |  88.09 kB | 
+styles.css          | styles                |  28.16 kB | 
+main.js             | main                  |  12.76 kB | 
+chunk-PY4RX23U.js   | -                     |   4.42 kB | 
+
+                    | Initial total         | 133.42 kB
+
+Lazy chunk files    | Names                 |  Raw size
+chunk-TYPIM2T4.js   | home-component        | 103.86 kB | 
+chunk-KVDYFKFS.js   | game-detail-component |  55.04 kB | 
+chunk-BV7IPK5I.js   | profile-component     |  20.76 kB | 
+chunk-N4NQPYTE.js   | login-component       |  16.70 kB | 
+
+Application bundle generation complete. [0.537 seconds]
+
+Page reload sent to client(s).
+Initial chunk files | Names          |  Raw size
+main.js             | main           |  12.76 kB | 
+
+Lazy chunk files    | Names          |  Raw size
+chunk-4UWXMKEL.js   | home-component | 104.92 kB | 
+
+Application bundle generation complete. [0.383 seconds]
+
+Page reload sent to client(s).

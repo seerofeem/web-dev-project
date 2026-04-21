@@ -44,6 +44,22 @@ class OnlineStats(models.Model):
         return f"{self.game.title} — {self.current_players} players @ {self.timestamp}"
 
 
+class SteamTopSnapshot(models.Model):
+    appid = models.IntegerField(db_index=True)
+    current_players = models.IntegerField(default=0)
+    peak_players = models.IntegerField(default=0)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['appid', 'timestamp']),
+        ]
+
+    def __str__(self):
+        return f"Steam {self.appid} — {self.current_players} players @ {self.timestamp}"
+
+
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     wishlist = models.ManyToManyField(Game, blank=True, related_name='wishlisted_by')

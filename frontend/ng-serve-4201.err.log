@@ -1,0 +1,63 @@
+Node.js version v25.6.1 detected.
+Odd numbered Node.js versions will not enter LTS status and should not be used for production. For more information, please see https://nodejs.org/en/about/previous-releases/.
+- Building...
+
+- Changes detected. Rebuilding...
+
+X [ERROR] TS2365: Operator '>' cannot be applied to types 'string | number' and 'number'. [plugin angular-compiler]
+
+    src/app/components/home/home.component.ts:800:69:
+      800 │ ...= null && this.minPlayers !== undefined && this.minPlayers > 0) {
+          ╵                                               ~~~~~~~~~~~~~~~~~~~
+
+
+X [ERROR] TS2365: Operator '>=' cannot be applied to types 'string | number' and 'number'. [plugin angular-compiler]
+
+    src/app/components/home/home.component.ts:804:65:
+      804 │ ... !== null && this.maxPrice !== undefined && this.maxPrice >= 0) {
+          ╵                                                ~~~~~~~~~~~~~~~~~~
+
+
+- Changes detected. Rebuilding...
+
+X [ERROR] TS2339: Property 'numericFilterValue' does not exist on type 'HomeComponent'. [plugin angular-compiler]
+
+    src/app/components/home/home.component.ts:768:28:
+      768 │     const minPlayers = this.numericFilterValue(this.minPlayers);
+          ╵                             ~~~~~~~~~~~~~~~~~~
+
+
+X [ERROR] TS2339: Property 'numericFilterValue' does not exist on type 'HomeComponent'. [plugin angular-compiler]
+
+    src/app/components/home/home.component.ts:769:26:
+      769 │     const maxPrice = this.numericFilterValue(this.maxPrice);
+          ╵                           ~~~~~~~~~~~~~~~~~~
+
+
+- Changes detected. Rebuilding...
+
+X [ERROR] TS2339: Property 'numericFilterValue' does not exist on type 'HomeComponent'. [plugin angular-compiler]
+
+    src/app/components/home/home.component.ts:768:28:
+      768 │     const minPlayers = this.numericFilterValue(this.minPlayers);
+          ╵                             ~~~~~~~~~~~~~~~~~~
+
+
+X [ERROR] TS2339: Property 'numericFilterValue' does not exist on type 'HomeComponent'. [plugin angular-compiler]
+
+    src/app/components/home/home.component.ts:769:26:
+      769 │     const maxPrice = this.numericFilterValue(this.maxPrice);
+          ╵                           ~~~~~~~~~~~~~~~~~~
+
+
+X [ERROR] TS2339: Property 'sanitizeFilterSelections' does not exist on type 'HomeComponent'. [plugin angular-compiler]
+
+    src/app/components/home/home.component.ts:1201:9:
+      1201 │     this.sanitizeFilterSelections();
+           ╵          ~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+- Changes detected. Rebuilding...
+
+- Changes detected. Rebuilding...
+

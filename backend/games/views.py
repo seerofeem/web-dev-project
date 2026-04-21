@@ -1,6 +1,11 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone as dt_timezone
+import re
+
 import requests
 from django.contrib.auth import authenticate
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -8,15 +13,247 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 
-from .models import Game, Developer, OnlineStats, UserProfile
+from .models import Game, Developer, OnlineStats, SteamTopSnapshot, UserProfile
 from .serializers import (
     GameModelSerializer, OnlineStatsModelSerializer,
-    OnlineStatsBaseSerializer, DeveloperBaseSerializer,
+    OnlineStatsBaseSerializer, DeveloperBaseSerializer, SteamTopSnapshotSerializer,
     UserRegisterSerializer, UserProfileSerializer,
 )
 
 STEAM_API_BASE = "https://api.steampowered.com"
 STEAM_STORE_BASE = "https://store.steampowered.com/api"
+STEAMCMD_BASE = "https://api.steamcmd.net/v1"
+TOP_GAMES_LIMIT = 20
+TOP_GAMES_WORKERS = 8
+TOP_HISTORY_HOURS = 24
+TOP_SNAPSHOT_INTERVAL_MINUTES = 10
+TOP_SNAPSHOT_RETENTION_DAYS = 3
+STEAM_NEWS_LIMIT = 6
+PRICE_REGIONS = [
+    ("us", "United States"),
+    ("gb", "United Kingdom"),
+    ("de", "Germany / EUR"),
+    ("kz", "Kazakhstan"),
+    ("jp", "Japan"),
+    ("br", "Brazil"),
+]
+
+
+def fetch_current_players(appid: int) -> int:
+    """Fetch current live players for a single Steam app."""
+    url = f"{STEAM_API_BASE}/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid={appid}"
+    response = requests.get(url, timeout=5, headers={"User-Agent": "SteamDB Mini/1.0"})
+    response.raise_for_status()
+    data = response.json()
+    return int(data.get('response', {}).get('player_count', 0) or 0)
+
+
+def fetch_json(url: str, timeout: int = 8) -> dict:
+    response = requests.get(
+        url,
+        timeout=timeout,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; SteamDBMini/1.0)",
+            "Accept": "application/json",
+        },
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def fetch_store_app_details(appid: int, cc: str = "us") -> dict:
+    url = f"{STEAM_STORE_BASE}/appdetails?appids={appid}&cc={cc}&l=english"
+    payload = fetch_json(url, timeout=8)
+    data = payload.get(str(appid), {})
+    if not data.get("success"):
+        raise ValueError("Game not found on Steam.")
+    return data.get("data", {})
+
+
+def fetch_steamcmd_info(appid: int) -> dict:
+    payload = fetch_json(f"{STEAMCMD_BASE}/info/{appid}", timeout=12)
+    return payload.get("data", {}).get(str(appid), {})
+
+
+def fetch_steam_news(appid: int, count: int = STEAM_NEWS_LIMIT):
+    payload = fetch_json(
+        f"{STEAM_API_BASE}/ISteamNews/GetNewsForApp/v2/?appid={appid}&count={count}&maxlength=400&format=json",
+        timeout=8,
+    )
+    return payload.get("appnews", {}).get("newsitems", [])
+
+
+def timestamp_to_iso(value):
+    if value in (None, "", 0, "0"):
+        return None
+    try:
+        return datetime.fromtimestamp(int(value), tz=dt_timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def clean_text(value, limit: int = 220):
+    if not value:
+        return ""
+    collapsed = re.sub(r"\s+", " ", value).strip()
+    if len(collapsed) <= limit:
+        return collapsed
+    return f"{collapsed[: limit - 1].rstrip()}…"
+
+
+def normalize_price_region(country_code: str, country_name: str, store_data: dict) -> dict:
+    price_data = store_data.get("price_overview") or {}
+    is_free = bool(store_data.get("is_free"))
+    final_minor = price_data.get("final")
+    initial_minor = price_data.get("initial", final_minor)
+    return {
+        "country_code": country_code.upper(),
+        "country_name": country_name,
+        "currency": price_data.get("currency", "FREE" if is_free else ""),
+        "final_formatted": price_data.get("final_formatted") or ("Free" if is_free else "Unavailable"),
+        "initial_formatted": (
+            price_data.get("initial_formatted")
+            or price_data.get("final_formatted")
+            or ("Free" if is_free else "—")
+        ),
+        "discount_percent": int(price_data.get("discount_percent", 0) or 0),
+        "final_minor": int(final_minor) if final_minor not in (None, "") else None,
+        "initial_minor": int(initial_minor) if initial_minor not in (None, "") else None,
+        "is_free": is_free,
+    }
+
+
+def normalize_package_groups(groups):
+    normalized = []
+    for group in groups or []:
+        subs = []
+        for sub in group.get("subs", []) or []:
+            subs.append({
+                "packageid": int(sub.get("packageid", 0) or 0),
+                "option_text": sub.get("option_text", "") or "Unnamed package",
+                "option_description": sub.get("option_description", ""),
+                "percent_savings": int(sub.get("percent_savings", 0) or 0),
+                "price_in_cents_with_discount": int(sub.get("price_in_cents_with_discount", 0) or 0),
+                "is_free_license": bool(sub.get("is_free_license")),
+            })
+        normalized.append({
+            "name": group.get("name", ""),
+            "title": group.get("title", "") or "Package group",
+            "description": group.get("description", ""),
+            "selection_text": group.get("selection_text", ""),
+            "save_text": group.get("save_text", ""),
+            "subs": subs,
+        })
+    return normalized
+
+
+def normalize_branches(branches):
+    normalized = []
+    for name, branch in (branches or {}).items():
+        if not isinstance(branch, dict):
+            continue
+        normalized.append({
+            "name": name,
+            "buildid": str(branch.get("buildid", "") or ""),
+            "description": branch.get("description", "") or "",
+            "updated_at": timestamp_to_iso(branch.get("timeupdated")),
+            "built_at": timestamp_to_iso(branch.get("timebuildupdated")),
+            "_sort": int(branch.get("timeupdated", 0) or branch.get("timebuildupdated", 0) or 0),
+        })
+    return [
+        {key: value for key, value in branch.items() if key != "_sort"}
+        for branch in sorted(normalized, key=lambda item: item["_sort"], reverse=True)[:12]
+    ]
+
+
+def normalize_depots(depots_root):
+    depots = []
+    for depot_id, depot in (depots_root or {}).items():
+        if not str(depot_id).isdigit() or not isinstance(depot, dict):
+            continue
+        manifests = depot.get("manifests", {}) if isinstance(depot.get("manifests"), dict) else {}
+        public_manifest = manifests.get("public", {}) if isinstance(manifests.get("public"), dict) else {}
+        config = depot.get("config", {}) if isinstance(depot.get("config"), dict) else {}
+        depots.append({
+            "depot_id": int(depot_id),
+            "oslist": config.get("oslist", ""),
+            "osarch": config.get("osarch", ""),
+            "dlcappid": int(depot.get("dlcappid", 0) or 0) or None,
+            "sharedinstall": str(depot.get("sharedinstall", "0")) == "1",
+            "manifest_count": len(manifests),
+            "public_gid": str(public_manifest.get("gid", "") or ""),
+            "public_size": int(public_manifest.get("size", 0) or 0),
+            "public_download": int(public_manifest.get("download", 0) or 0),
+        })
+    return sorted(depots, key=lambda depot: depot["public_size"], reverse=True)[:12]
+
+
+def normalize_launch_configs(config):
+    launch_map = config.get("launch", {}) if isinstance(config.get("launch"), dict) else {}
+    launch_rows = []
+    for index, row in launch_map.items():
+        if not isinstance(row, dict):
+            continue
+        row_config = row.get("config", {}) if isinstance(row.get("config"), dict) else {}
+        launch_rows.append({
+            "index": str(index),
+            "executable": row.get("executable", ""),
+            "arguments": row.get("arguments", ""),
+            "description": row.get("description", "") or "Default launch",
+            "oslist": row_config.get("oslist", ""),
+            "osarch": row_config.get("osarch", ""),
+            "betakey": row_config.get("betakey", ""),
+            "ownsdlc": row_config.get("ownsdlc", ""),
+            "type": row.get("type", ""),
+        })
+    return launch_rows[:10]
+
+
+def normalize_config_entries(config):
+    desired_keys = [
+        "installdir",
+        "contenttype",
+        "checkforupdatesbeforelaunch",
+        "matchmaking_uptodate",
+        "launchwithoutworkshopupdates",
+        "steamcontrollertemplateindex",
+        "vacmodulefilename",
+        "uselaunchcommandline",
+        "usemms",
+        "sdr-groups",
+    ]
+    entries = []
+    for key in desired_keys:
+        value = config.get(key)
+        if value in (None, "", {}, []):
+            continue
+        entries.append({"key": key, "value": str(value)})
+    return entries
+
+
+def normalize_news_feed(items):
+    normalized = []
+    for item in items or []:
+        normalized.append({
+            "gid": str(item.get("gid", "")),
+            "title": item.get("title", "") or "Steam update",
+            "url": item.get("url", ""),
+            "author": item.get("author", "") or "Steam",
+            "feedlabel": item.get("feedlabel", "") or "Steam News",
+            "feedname": item.get("feedname", ""),
+            "date": timestamp_to_iso(item.get("date")),
+            "contents": clean_text(item.get("contents", "")),
+            "tags": item.get("tags", []) or [],
+        })
+    return normalized
+
+
+def persist_top_snapshot(appid: int, current: int, peak: int) -> None:
+    latest = SteamTopSnapshot.objects.filter(appid=appid).first()
+    now = timezone.now()
+    if latest and now - latest.timestamp < timedelta(minutes=TOP_SNAPSHOT_INTERVAL_MINUTES):
+        return
+    SteamTopSnapshot.objects.create(appid=appid, current_players=current, peak_players=max(peak, current))
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -53,10 +290,7 @@ def steam_online_stats(request, appid):
     Also persists snapshot to OnlineStats model.
     """
     try:
-        url = f"{STEAM_API_BASE}/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid={appid}"
-        r = requests.get(url, timeout=5)
-        data = r.json()
-        current = data.get('response', {}).get('player_count', 0)
+        current = fetch_current_players(appid)
 
         # Persist snapshot if game exists in DB
         game = Game.objects.filter(steam_appid=appid).first()
@@ -118,12 +352,7 @@ class SteamGameInfoView(APIView):
 
     def get(self, request, appid):
         try:
-            url = f"{STEAM_STORE_BASE}/appdetails?appids={appid}&l=english"
-            r = requests.get(url, timeout=8)
-            data = r.json().get(str(appid), {})
-            if not data.get('success'):
-                return Response({'error': 'Game not found on Steam.'}, status=404)
-            return Response(data.get('data', {}))
+            return Response(fetch_store_app_details(appid, "us"))
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
@@ -132,9 +361,7 @@ class SteamGameInfoView(APIView):
         if not request.user.is_authenticated:
             return Response({'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
         try:
-            url = f"{STEAM_STORE_BASE}/appdetails?appids={appid}&l=english"
-            r = requests.get(url, timeout=8)
-            data = r.json().get(str(appid), {}).get('data', {})
+            data = fetch_store_app_details(appid, "us")
             if not data:
                 return Response({'error': 'Game not found on Steam.'}, status=404)
 
@@ -238,14 +465,131 @@ def online_stats_history(request, game_id):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+def steam_top_history(request, appid):
+    """Return recent daily snapshots for a Steam top-game app id."""
+    since = timezone.now() - timedelta(hours=TOP_HISTORY_HOURS)
+    snapshots = SteamTopSnapshot.objects.filter(appid=appid, timestamp__gte=since).order_by('timestamp')
+    serializer = SteamTopSnapshotSerializer(snapshots, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def steam_top_games(request):
     """
-    Proxy: Fetch top games by current players from Steam API.
+    Proxy: fetch Steam top games and enrich rows with current live players.
     """
     try:
         url = f"{STEAM_API_BASE}/ISteamChartsService/GetMostPlayedGames/v1/"
-        r = requests.get(url, timeout=8)
-        rows = r.json().get('response', {}).get('ranks', [])[:20]
-        return Response(rows)
+        response = requests.get(url, timeout=8)
+        response.raise_for_status()
+        rows = response.json().get('response', {}).get('ranks', [])[:TOP_GAMES_LIMIT]
+
+        current_by_appid = {}
+        with ThreadPoolExecutor(max_workers=TOP_GAMES_WORKERS) as executor:
+            futures = {
+                executor.submit(fetch_current_players, int(row.get('appid', 0))): int(row.get('appid', 0))
+                for row in rows if row.get('appid')
+            }
+            for future in as_completed(futures):
+                appid = futures[future]
+                try:
+                    current_by_appid[appid] = future.result()
+                except Exception:
+                    current_by_appid[appid] = 0
+
+        enriched_rows = []
+        for row in rows:
+            appid = int(row.get('appid', 0) or 0)
+            peak = int(row.get('peak_in_game', 0) or 0)
+            current = int(current_by_appid.get(appid, 0))
+            persist_top_snapshot(appid, current, peak)
+            enriched = {
+                **row,
+                'appid': appid,
+                'rank': int(row.get('rank', 0) or 0),
+                'peak_in_game': peak,
+                'concurrent_in_game': current,
+            }
+            enriched_rows.append(enriched)
+        SteamTopSnapshot.objects.filter(
+            timestamp__lt=timezone.now() - timedelta(days=TOP_SNAPSHOT_RETENTION_DAYS)
+        ).delete()
+        return Response(enriched_rows)
     except Exception as e:
         return Response({'error': str(e)}, status=502)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def steam_app_deep_detail(request, appid):
+    """
+    SteamDB-like aggregate payload for one app:
+    store pricing, changenumber, branches, depots, launch configs, and patch feed.
+    """
+    try:
+        store_by_region = {}
+        with ThreadPoolExecutor(max_workers=len(PRICE_REGIONS)) as executor:
+            futures = {
+                executor.submit(fetch_store_app_details, appid, code): (code, label)
+                for code, label in PRICE_REGIONS
+            }
+            for future in as_completed(futures):
+                code, _label = futures[future]
+                try:
+                    store_by_region[code] = future.result()
+                except Exception:
+                    continue
+
+        if not store_by_region:
+            return Response({'error': 'Game not found on Steam.'}, status=404)
+
+        primary_store = store_by_region.get("us") or next(iter(store_by_region.values()))
+        steamcmd_info = fetch_steamcmd_info(appid)
+        if not steamcmd_info:
+            raise ValueError("Steam app metadata is unavailable right now.")
+
+        news_feed = normalize_news_feed(fetch_steam_news(appid))
+        common = steamcmd_info.get("common", {}) if isinstance(steamcmd_info.get("common"), dict) else {}
+        config = steamcmd_info.get("config", {}) if isinstance(steamcmd_info.get("config"), dict) else {}
+        extended = steamcmd_info.get("extended", {}) if isinstance(steamcmd_info.get("extended"), dict) else {}
+        depots_root = steamcmd_info.get("depots", {}) if isinstance(steamcmd_info.get("depots"), dict) else {}
+        branches = normalize_branches(depots_root.get("branches", {}))
+        pricing = [
+            normalize_price_region(code, label, store_by_region[code])
+            for code, label in PRICE_REGIONS
+            if code in store_by_region
+        ]
+
+        return Response({
+            "appid": appid,
+            "fetched_at": timezone.now().isoformat(),
+            "store_type": primary_store.get("type") or common.get("type") or "game",
+            "website": primary_store.get("website") or extended.get("homepage") or "",
+            "recommendation_total": int((primary_store.get("recommendations") or {}).get("total", 0) or 0),
+            "screenshot_count": len(primary_store.get("screenshots", []) or []),
+            "movie_count": len(primary_store.get("movies", []) or []),
+            "dlc_count": len(primary_store.get("dlc", []) or []),
+            "content_notes": ((primary_store.get("content_descriptors") or {}).get("notes") or ""),
+            "review_score": common.get("review_score", ""),
+            "review_percentage": common.get("review_percentage", ""),
+            "changenumber": int(steamcmd_info.get("_change_number", 0) or 0) or None,
+            "sha": steamcmd_info.get("_sha", ""),
+            "payload_size": int(steamcmd_info.get("_size", 0) or 0) or None,
+            "build_id": branches[0].get("buildid") if branches else "",
+            "store_last_updated_at": timestamp_to_iso(common.get("store_asset_mtime")),
+            "steam_release_at": timestamp_to_iso(common.get("steam_release_date")),
+            "platforms": [name for name, enabled in (primary_store.get("platforms") or {}).items() if enabled],
+            "categories": [row.get("description", "") for row in (primary_store.get("categories") or []) if row.get("description")],
+            "supported_languages": sorted((common.get("languages") or {}).keys()),
+            "package_ids": [int(package_id) for package_id in (primary_store.get("packages") or []) if package_id],
+            "pricing": pricing,
+            "package_groups": normalize_package_groups(primary_store.get("package_groups") or []),
+            "depots": normalize_depots(depots_root),
+            "branches": branches,
+            "launch_configs": normalize_launch_configs(config),
+            "config_entries": normalize_config_entries(config),
+            "news_feed": news_feed,
+        })
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_502_BAD_GATEWAY)

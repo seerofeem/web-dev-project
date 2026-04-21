@@ -94,39 +94,28 @@ import { ApiService } from '../../services/api.service';
     </div>
   `,
   styles: [`
-    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;500;600&display=swap');
-    :host { display: block; background: #090d16; min-height: 100vh; font-family: 'Exo 2', sans-serif; }
+    :host { display: block; background: var(--background); min-height: 100vh; font-family: 'Exo 2', sans-serif; color: var(--primary-text); }
     .login-page { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 56px); padding: 40px 20px; }
-    .login-card { background: #141c2e; border: 1px solid #1a2640; padding: 36px 32px; width: 100%; max-width: 420px; }
-    .card-logo { display: flex; align-items: center; gap: 8px; font-family: 'Rajdhani', sans-serif; font-size: 22px; font-weight: 700; color: #fff; letter-spacing: 2px; margin-bottom: 4px; }
-    .logo-icon { color: #00cfff; font-size: 22px; }
-    .accent { color: #00cfff; }
-    .card-subtitle { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: #2e3e58; letter-spacing: 2px; margin-bottom: 24px; }
+    .login-card { background: var(--surface); border: 1px solid var(--border); padding: 36px 32px; width: 100%; max-width: 420px; }
+    .card-logo { display: flex; align-items: center; gap: 8px; font-family: 'Rajdhani', sans-serif; font-size: 22px; font-weight: 700; color: var(--heading-text); letter-spacing: 2px; margin-bottom: 4px; }
+    .logo-icon { color: var(--accent); font-size: 22px; }
+    .accent { color: var(--accent); }
+    .card-subtitle { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--secondary-text); letter-spacing: 2px; margin-bottom: 24px; }
 
-    .mode-tabs { display: flex; margin-bottom: 20px; border: 1px solid #1a2640; }
-    .mode-tab { flex: 1; background: transparent; border: none; color: #6e80a0; font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 1.5px; padding: 10px; cursor: pointer; transition: all 0.15s; }
-    .mode-tab.active { background: rgba(0,207,255,.08); color: #00cfff; }
-    .mode-tab:hover:not(.active) { color: #bfcfe8; }
-
-    .banner { padding: 8px 12px; margin-bottom: 14px; font-family: 'Share Tech Mono', monospace; font-size: 11px; }
-    .banner.error { background: rgba(255,95,46,.1); border: 1px solid #ff5f2e; color: #ff5f2e; }
-    .banner.success { background: rgba(61,220,132,.1); border: 1px solid #3ddc84; color: #3ddc84; }
+    .mode-tabs { display: flex; margin-bottom: 20px; border: 1px solid var(--border); background: var(--surface-sunken); }
+    .mode-tab { flex: 1; background: transparent; border: none; color: var(--secondary-text); font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 1.5px; padding: 10px; cursor: pointer; transition: background 0.15s, color 0.15s; }
+    .mode-tab.active { background: var(--accent-soft); color: var(--accent-hover); }
+    .mode-tab:hover:not(.active) { color: var(--primary-text); background: var(--surface-hover); }
 
     .form { display: flex; flex-direction: column; gap: 0; }
-    .f-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-    .f-label { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #6e80a0; letter-spacing: 1px; }
-    .f-input { background: #0d1220; border: 1px solid #1a2640; color: #bfcfe8; padding: 10px 14px; font-family: 'Share Tech Mono', monospace; font-size: 13px; outline: none; transition: border 0.2s; }
-    .f-input:focus { border-color: #00cfff; }
+    .form .f-group { margin-bottom: 14px; }
+    .form .f-input { padding: 10px 14px; }
 
-    .btn-submit { background: #00cfff; color: #090d16; border: none; font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 1.5px; padding: 12px; cursor: pointer; width: 100%; margin-top: 4px; transition: opacity 0.2s; }
-    .btn-submit:hover { opacity: 0.85; }
-    .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+    .back-link { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--muted-text); text-align: center; margin-top: 16px; cursor: pointer; transition: color 0.15s; }
+    .back-link:hover { color: var(--accent-hover); }
 
-    .back-link { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #2e3e58; text-align: center; margin-top: 16px; cursor: pointer; transition: color 0.15s; }
-    .back-link:hover { color: #6e80a0; }
-
-    .hints { margin-top: 20px; padding-top: 16px; border-top: 1px solid #1a2640; display: flex; flex-direction: column; gap: 4px; }
-    .hint-item { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: #1a2640; }
+    .hints { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+    .hint-item { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--muted-text); }
   `]
 })
 export class LoginComponent {

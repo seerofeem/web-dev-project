@@ -3,7 +3,24 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../../services/api.service';
-import { Developer, Game, OnlineStats } from '../../interfaces/models';
+import {
+  Developer,
+  Game,
+  OnlineStats,
+  SteamAppDeepData,
+  SteamLaunchConfig
+} from '../../interfaces/models';
+
+type DetailTab = 'charts' | 'info' | 'prices' | 'updates' | 'admin';
+
+interface ActivityFeedItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  meta: string;
+  timestamp: number;
+  utc: string;
+}
 
 @Component({
   selector: 'app-game-detail',
@@ -19,49 +36,100 @@ import { Developer, Game, OnlineStats } from '../../interfaces/models';
       }
 
       @if (!loading && game) {
-        <!-- Hero banner -->
-        <div class="hero" [style.backgroundImage]="game.header_image ? 'url('+game.header_image+')' : 'none'">
-          <div class="hero-overlay">
-            <div class="hero-content">
-              <div class="hero-genres">
-                @for (genre of game.genres; track genre) {
-                  <span class="genre-pill">{{ genre }}</span>
-                }
-              </div>
-              <h1 class="hero-title">{{ game.title }}</h1>
-              <div class="hero-dev">
-                @for (dev of (game.developers || []); track dev.id) {
-                  <span class="dev-name">{{ dev.name }}</span>
-                }
-              </div>
-              <div class="hero-actions">
-                <!-- click event #1: refresh live players -->
-                <button class="btn-primary" (click)="refreshPlayers()" [disabled]="refreshingPlayers">
-                  {{ refreshingPlayers ? 'FETCHING...' : '↻ LIVE PLAYERS' }}
-                </button>
-                @if (isLoggedIn) {
-                  <!-- click event #2: wishlist toggle -->
-                  <button class="btn-ghost" (click)="toggleWishlist()">
-                    {{ inWishlist ? '♥ IN WISHLIST' : '♡ ADD TO WISHLIST' }}
-                  </button>
-                  <!-- click event #3: delete game -->
-                  @if (canDelete) {
-                    <button class="btn-danger" (click)="deleteGame()">DELETE</button>
-                  }
-                }
+        <div class="content">
+          <section class="detail-header">
+            <div class="detail-header-bar">
+              <button class="btn-ghost-sm" (click)="goBack()">← BACK</button>
+              <div class="detail-header-flags">
+                <span class="detail-flag">APP {{ game.steam_appid }}</span>
+                <span class="detail-flag">{{ game.is_free ? 'FREE TO PLAY' : 'PAID APP' }}</span>
+                <span class="detail-flag">{{ statsHistory.length }} SNAPSHOTS</span>
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- Main content -->
-        <div class="content">
+            <div class="detail-header-grid">
+              <div class="detail-capsule">
+                @if (game.header_image) {
+                  <img [src]="game.header_image" [alt]="game.title" (error)="onImageError($event)" />
+                } @else {
+                  <div class="detail-capsule-placeholder">APP {{ game.steam_appid }}</div>
+                }
+              </div>
+
+              <div class="detail-header-copy">
+                <h1 class="detail-title">{{ game.title }}</h1>
+                <div class="detail-subtitle">
+                  Steam app {{ game.steam_appid }} · {{ storeHeadlinePrice() }} · {{ currentPlayers | number }} players now
+                </div>
+
+                <div class="detail-meta-grid">
+                  <div class="detail-meta-item">
+                    <span>Developer</span>
+                    <strong>{{ formatDevelopers(game.developers) }}</strong>
+                  </div>
+                  <div class="detail-meta-item">
+                    <span>Change number</span>
+                    <strong>{{ steamDetail?.changenumber || '—' }}</strong>
+                  </div>
+                  <div class="detail-meta-item">
+                    <span>Supported systems</span>
+                    <strong>{{ steamPlatformsLabel() }}</strong>
+                  </div>
+                  <div class="detail-meta-item">
+                    <span>Last update UTC</span>
+                    <strong>{{ formatUtc(game.updated_at) }}</strong>
+                  </div>
+                  <div class="detail-meta-item">
+                    <span>Record owner</span>
+                    <strong>{{ game.created_by_username || 'Public record' }}</strong>
+                  </div>
+                  <div class="detail-meta-item">
+                    <span>Created UTC</span>
+                    <strong>{{ formatUtc(game.created_at) }}</strong>
+                  </div>
+                </div>
+
+                @if (game.description) {
+                  <p class="detail-description">{{ game.description }}</p>
+                }
+
+                <div class="detail-chip-row">
+                  @for (genre of game.genres.slice(0, 4); track genre) {
+                    <span class="genre-tag">{{ genre }}</span>
+                  }
+                  @for (tag of game.tags.slice(0, 6); track tag) {
+                    <span class="tag">{{ tag }}</span>
+                  }
+                </div>
+
+                <div class="detail-actions">
+                  <button class="btn-primary" (click)="refreshPlayers()" [disabled]="refreshingPlayers">
+                    {{ refreshingPlayers ? 'FETCHING...' : 'REFRESH PLAYERS' }}
+                  </button>
+                  <button class="btn-ghost" (click)="openStore()">STEAM STORE</button>
+                  <button class="btn-ghost" (click)="openSteamDb()">STEAMDB</button>
+                  <button class="btn-ghost" (click)="copyAppId()">COPY APP ID</button>
+                  @if (isLoggedIn) {
+                    <button class="btn-ghost" (click)="toggleWishlist()">
+                      {{ inWishlist ? 'IN WISHLIST' : 'ADD TO WISHLIST' }}
+                    </button>
+                    @if (canDelete) {
+                      <button class="btn-danger" (click)="deleteGame()">DELETE</button>
+                    }
+                  }
+                </div>
+              </div>
+            </div>
+          </section>
 
           @if (errorMsg) {
             <div class="banner error">⚠ {{ errorMsg }}</div>
           }
           @if (successMsg) {
             <div class="banner success">✓ {{ successMsg }}</div>
+          }
+          @if (steamDetailError) {
+            <div class="banner error">⚠ SteamDB proxy: {{ steamDetailError }}</div>
           }
 
           <div class="layout">
@@ -81,39 +149,350 @@ import { Developer, Game, OnlineStats } from '../../interfaces/models';
                   <div class="stat-hint">all time tracked</div>
                 </div>
                 <div class="stat-card">
-                  <div class="stat-label">PRICE</div>
-                  <div class="stat-value">{{ game.is_free ? 'FREE' : ('$' + game.price) }}</div>
-                  <div class="stat-hint">Steam Store</div>
+                  <div class="stat-label">STORE PRICE</div>
+                  <div class="stat-value">{{ storeHeadlinePrice() }}</div>
+                  <div class="stat-hint">{{ steamDetail?.pricing?.length || 0 }} currencies tracked</div>
                 </div>
                 <div class="stat-card">
-                  <div class="stat-label">STEAM APP ID</div>
-                  <div class="stat-value mono">{{ game.steam_appid }}</div>
-                  <div class="stat-hint">store identifier</div>
+                  <div class="stat-label">CHANGENUMBER</div>
+                  <div class="stat-value mono">{{ steamDetail?.changenumber || game.steam_appid }}</div>
+                  <div class="stat-hint">{{ steamDetail?.build_id ? 'build ' + steamDetail?.build_id : 'store identifier' }}</div>
                 </div>
               </div>
 
-              <!-- Player chart -->
-              <div class="card">
-                <div class="card-head">
-                  <span class="card-title">ONLINE HISTORY</span>
-                  <span class="card-sub">{{ statsHistory.length }} snapshots</span>
-                </div>
-                <div class="chart-wrap">
-                  <canvas #chartCanvas class="chart-canvas"></canvas>
-                  @if (statsHistory.length === 0) {
-                    <div class="chart-empty">No history yet. Click LIVE PLAYERS to record a snapshot.</div>
-                  }
-                </div>
-              </div>
+              <nav class="detail-tabs" aria-label="Game details">
+                @for (tab of detailTabs; track tab.id) {
+                  <button [class.active]="activeTab === tab.id" (click)="setTab(tab.id)">
+                    {{ tab.label }}
+                  </button>
+                }
+                @if (isLoggedIn) {
+                  <button [class.active]="activeTab === 'admin'" (click)="setTab('admin')">ADMIN</button>
+                }
+              </nav>
 
-              <!-- Description -->
-              <div class="card">
-                <div class="card-title">ABOUT</div>
-                <p class="description">{{ game.description || 'No description available.' }}</p>
-              </div>
+              @if (activeTab === 'charts') {
+                <div class="card">
+                  <div class="card-head">
+                    <span class="card-title">ONLINE HISTORY</span>
+                    <span class="card-sub">{{ statsHistory.length }} snapshots · {{ trendLabel() }}</span>
+                  </div>
+                  <div class="chart-wrap">
+                    <canvas #chartCanvas class="chart-canvas"></canvas>
+                    @if (statsHistory.length === 0) {
+                      <div class="chart-empty">No history yet. Click LIVE PLAYERS to record a snapshot.</div>
+                    }
+                  </div>
+                </div>
 
-              <!-- Edit form (click event #4: save edit) -->
-              @if (isLoggedIn) {
+                <div class="detail-metrics">
+                  <div>
+                    <span>Average players</span>
+                    <strong>{{ averagePlayers() | number }}</strong>
+                  </div>
+                  <div>
+                    <span>Lowest snapshot</span>
+                    <strong>{{ minSnapshot() | number }}</strong>
+                  </div>
+                  <div>
+                    <span>Highest snapshot</span>
+                    <strong>{{ maxSnapshot() | number }}</strong>
+                  </div>
+                  <div>
+                    <span>Last update</span>
+                    <strong>{{ latestSnapshotTime() }}</strong>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-title">SNAPSHOTS</div>
+                  <div class="data-table-wrap">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th class="num">Players</th>
+                          <th class="num">Peak</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (stat of statsHistory.slice().reverse(); track stat.timestamp) {
+                          <tr>
+                            <td>{{ formatUtc(stat.timestamp) }}</td>
+                            <td class="num green-text">{{ stat.current_players | number }}</td>
+                            <td class="num">{{ stat.peak_players | number }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              }
+
+              @if (activeTab === 'info') {
+                <div class="card">
+                  <div class="card-title">ABOUT</div>
+                  <p class="description">{{ game.description || 'No description available.' }}</p>
+                </div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <span class="card-title">STEAM METADATA</span>
+                    <span class="card-sub">{{ steamDetail?.build_id ? 'public build ' + steamDetail?.build_id : 'local + Steam store record' }}</span>
+                  </div>
+                  <div class="meta-grid">
+                    <div><span>Steam Game ID</span><strong>{{ game.steam_appid }}</strong></div>
+                    <div><span>Type</span><strong>{{ steamDetail?.store_type || 'Game' }}</strong></div>
+                    <div><span>Developer</span><strong>{{ formatDevelopers(game.developers) }}</strong></div>
+                    <div><span>Record owner</span><strong>{{ game.created_by_username || 'Public record' }}</strong></div>
+                    <div><span>Change number</span><strong>{{ steamDetail?.changenumber || '—' }}</strong></div>
+                    <div><span>Payload SHA</span><strong>{{ steamDetail?.sha || '—' }}</strong></div>
+                    <div><span>Public build</span><strong>{{ steamDetail?.build_id || '—' }}</strong></div>
+                    <div><span>Steam release UTC</span><strong>{{ formatUtc(steamDetail?.steam_release_at) }}</strong></div>
+                    <div><span>Store asset UTC</span><strong>{{ formatUtc(steamDetail?.store_last_updated_at) }}</strong></div>
+                    <div><span>Created UTC</span><strong>{{ formatUtc(game.created_at) }}</strong></div>
+                    <div><span>Updated UTC</span><strong>{{ formatUtc(game.updated_at) }}</strong></div>
+                    <div><span>Platforms</span><strong>{{ steamPlatformsLabel() }}</strong></div>
+                    <div><span>Languages</span><strong>{{ steamDetail?.supported_languages?.length || 0 }}</strong></div>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-title">TAGS AND CATEGORIES</div>
+                  <div class="tags-wrap">
+                    @for (tag of game.tags; track tag) {
+                      <span class="tag">{{ tag }}</span>
+                    }
+                    @for (genre of game.genres; track genre) {
+                      <span class="genre-tag">{{ genre }}</span>
+                    }
+                    @for (category of steamDetail?.categories || []; track category) {
+                      <span class="tag">{{ category }}</span>
+                    }
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <span class="card-title">DEPOTS</span>
+                    <span class="card-sub">{{ steamDetail?.depots?.length || 0 }} depot rows · public manifests</span>
+                  </div>
+                  <div class="data-table-wrap">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>Depot</th>
+                          <th>OS</th>
+                          <th class="num">Manifests</th>
+                          <th class="num">Public size</th>
+                          <th>Public GID</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (depot of steamDetail?.depots || []; track depot.depot_id) {
+                          <tr>
+                            <td>{{ depot.depot_id }}</td>
+                            <td>{{ depot.oslist || 'all' }}{{ depot.osarch ? ' / ' + depot.osarch : '' }}</td>
+                            <td class="num">{{ depot.manifest_count }}</td>
+                            <td class="num">{{ formatBytes(depot.public_size) }}</td>
+                            <td>{{ depot.public_gid || '—' }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="dashboard-grid two-col">
+                  <div class="card">
+                    <div class="card-head">
+                      <span class="card-title">LAUNCH CONFIGS</span>
+                      <span class="card-sub">{{ steamDetail?.launch_configs?.length || 0 }} launch entries</span>
+                    </div>
+                    <div class="data-table-wrap">
+                      <table class="data-table compact-launch-table">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Executable</th>
+                            <th>Profile</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @for (launch of steamDetail?.launch_configs || []; track launch.index) {
+                            <tr>
+                              <td>{{ launch.index }}</td>
+                              <td>{{ launch.executable || '—' }}</td>
+                              <td>{{ launchConfigLabel(launch) }}</td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div class="card">
+                    <div class="card-head">
+                      <span class="card-title">CONFIG FLAGS</span>
+                      <span class="card-sub">{{ steamDetail?.config_entries?.length || 0 }} selected runtime keys</span>
+                    </div>
+                    <div class="info-rows">
+                      @for (entry of steamDetail?.config_entries || []; track entry.key) {
+                        <div class="info-row">
+                          <span class="info-key">{{ entry.key }}</span>
+                          <span class="info-val config-value">{{ entry.value }}</span>
+                        </div>
+                      }
+                    </div>
+                  </div>
+                </div>
+              }
+
+              @if (activeTab === 'prices') {
+                <div class="price-summary">
+                  <div>
+                    <span>Current price</span>
+                    <strong>{{ storeHeadlinePrice() }}</strong>
+                  </div>
+                  <div>
+                    <span>Currencies tracked</span>
+                    <strong>{{ steamDetail?.pricing?.length || 0 }}</strong>
+                  </div>
+                  <div>
+                    <span>Package groups</span>
+                    <strong>{{ steamDetail?.package_groups?.length || 0 }}</strong>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <span class="card-title">MULTI-CURRENCY PRICE TABLE</span>
+                    <span class="card-sub">Steam store pricing matrix by selected country storefronts</span>
+                  </div>
+                  <div class="data-table-wrap">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>Region</th>
+                          <th>Price</th>
+                          <th>Base</th>
+                          <th class="num">Discount</th>
+                          <th>Currency</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (price of steamDetail?.pricing || []; track price.country_code) {
+                          <tr>
+                            <td>{{ price.country_name }} ({{ price.country_code }})</td>
+                            <td class="green-text">{{ price.final_formatted }}</td>
+                            <td>{{ price.initial_formatted }}</td>
+                            <td class="num">{{ price.discount_percent }}%</td>
+                            <td>{{ price.currency || 'FREE' }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <span class="card-title">PACKAGES</span>
+                    <span class="card-sub">{{ steamDetail?.package_ids?.length || 0 }} package ids surfaced by the store</span>
+                  </div>
+                  <div class="package-list">
+                    @for (group of steamDetail?.package_groups || []; track group.name + group.title) {
+                      @for (sub of group.subs; track sub.packageid) {
+                        <div class="package-row">
+                          <span>#{{ sub.packageid }}</span>
+                          <strong>{{ sub.option_text }}</strong>
+                          <em>{{ sub.is_free_license ? 'Free' : (sub.percent_savings ? '-' + sub.percent_savings + '%' : 'Store') }}</em>
+                        </div>
+                      }
+                    }
+                    @if (!(steamDetail?.package_groups?.length)) {
+                      <div class="package-row">
+                        <span>Store hub</span>
+                        <strong>steam://store/{{ game.steam_appid }}</strong>
+                        <em>External</em>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+
+              @if (activeTab === 'updates') {
+                <div class="detail-metrics">
+                  <div>
+                    <span>Change number</span>
+                    <strong>{{ steamDetail?.changenumber || '—' }}</strong>
+                  </div>
+                  <div>
+                    <span>Public build</span>
+                    <strong>{{ steamDetail?.build_id || '—' }}</strong>
+                  </div>
+                  <div>
+                    <span>Steam news items</span>
+                    <strong>{{ steamDetail?.news_feed?.length || 0 }}</strong>
+                  </div>
+                  <div>
+                    <span>Last branch UTC</span>
+                    <strong>{{ latestBranchUpdate() }}</strong>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <span class="card-title">BUILD AND BRANCH HISTORY</span>
+                    <span class="card-sub">Public branch updates from Steam app metadata</span>
+                  </div>
+                  <div class="data-table-wrap">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>Branch</th>
+                          <th class="num">Build</th>
+                          <th>Built UTC</th>
+                          <th>Updated UTC</th>
+                          <th>Description</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (branch of steamDetail?.branches || []; track branch.name) {
+                          <tr>
+                            <td>{{ branch.name }}</td>
+                            <td class="num">{{ branch.buildid || '—' }}</td>
+                            <td>{{ formatUtc(branch.built_at) }}</td>
+                            <td>{{ formatUtc(branch.updated_at) }}</td>
+                            <td>{{ branch.description || '—' }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-head">
+                    <span class="card-title">PATCH / FEED HISTORY</span>
+                    <span class="card-sub">Steam news, branch flips, local metadata changes, and tracked player snapshots</span>
+                  </div>
+                  <div class="timeline">
+                    @for (item of activityFeed; track item.id) {
+                      <div class="timeline-row static-row">
+                        <span class="timeline-dot"></span>
+                        <span class="timeline-main">
+                          <strong>{{ item.title }}</strong>
+                          <small>{{ item.subtitle }} · {{ item.utc }}</small>
+                        </span>
+                        <span class="timeline-meta">{{ item.meta }}</span>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+
+              @if (activeTab === 'admin' && isLoggedIn) {
                 <div class="card">
                   <div class="card-head">
                     <span class="card-title">EDIT GAME</span>
@@ -147,33 +526,38 @@ import { Developer, Game, OnlineStats } from '../../interfaces/models';
             <!-- Right column -->
             <div class="col-side">
               <div class="card">
-                <div class="card-title">GAME INFO</div>
+                <div class="card-title">EXTERNAL LINKS</div>
                 <div class="info-rows">
                   <div class="info-row">
-                    <span class="info-key">DEVELOPER</span>
-                    <span class="info-val">
-                      {{ formatDevelopers(game.developers) }}
-                    </span>
+                    <span class="info-key">APP ID</span>
+                    <span class="info-val">{{ game.steam_appid }}</span>
                   </div>
                   <div class="info-row">
-                    <span class="info-key">GENRES</span>
-                    <span class="info-val">{{ game.genres.join(', ') || '—' }}</span>
+                    <span class="info-key">PRICE</span>
+                    <span class="info-val">{{ storeHeadlinePrice() }}</span>
                   </div>
                   <div class="info-row">
-                    <span class="info-key">TAGS</span>
-                    <span class="info-val">{{ game.tags.slice(0,4).join(', ') || '—' }}</span>
+                    <span class="info-key">BUILD</span>
+                    <span class="info-val">{{ steamDetail?.build_id || '—' }}</span>
                   </div>
                   <div class="info-row">
-                    <span class="info-key">ADDED BY</span>
-                    <span class="info-val">{{ game.created_by_username || '—' }}</span>
+                    <span class="info-key">CHANGE</span>
+                    <span class="info-val">{{ steamDetail?.changenumber || '—' }}</span>
                   </div>
                   <div class="info-row">
-                    <span class="info-key">ADDED</span>
-                    <span class="info-val">{{ game.created_at | date:'mediumDate' }}</span>
+                    <span class="info-key">UPDATED UTC</span>
+                    <span class="info-val">{{ formatUtc(game.updated_at) }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-key">SNAPSHOTS</span>
+                    <span class="info-val">{{ statsHistory.length }}</span>
                   </div>
                 </div>
                 <a class="steam-link" [href]="'https://store.steampowered.com/app/' + game.steam_appid" target="_blank">
-                  VIEW ON STEAM →
+                  OPEN STEAM STORE →
+                </a>
+                <a class="steam-link secondary-link" [href]="'https://steamdb.info/app/' + game.steam_appid + '/'" target="_blank">
+                  OPEN STEAMDB →
                 </a>
               </div>
 
@@ -183,6 +567,32 @@ import { Developer, Game, OnlineStats } from '../../interfaces/models';
                   @for (tag of game.tags; track tag) {
                     <span class="tag">{{ tag }}</span>
                   }
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-title">RECORD HEALTH</div>
+                <div class="info-rows">
+                  <div class="info-row">
+                    <span class="info-key">SNAPSHOTS</span>
+                    <span class="info-val">{{ statsHistory.length }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-key">TAGS</span>
+                    <span class="info-val">{{ game.tags.length }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-key">GENRES</span>
+                    <span class="info-val">{{ game.genres.length }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-key">NEWS ITEMS</span>
+                    <span class="info-val">{{ steamDetail?.news_feed?.length || 0 }}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-key">DEPOTS</span>
+                    <span class="info-val">{{ steamDetail?.depots?.length || 0 }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -200,82 +610,149 @@ import { Developer, Game, OnlineStats } from '../../interfaces/models';
     </div>
   `,
   styles: [`
-    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;500;600&display=swap');
-    :host { display: block; background: #090d16; min-height: 100vh; font-family: 'Exo 2', sans-serif; color: #bfcfe8; }
+    :host { display: block; background: var(--background); min-height: 100vh; font-family: 'Exo 2', sans-serif; color: var(--primary-text); }
 
     .loading-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; gap: 16px; }
-    .spinner { width: 32px; height: 32px; border: 2px solid #1a2640; border-top-color: #00cfff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .spinner { width: 32px; height: 32px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to{transform:rotate(360deg)} }
-    .loading-text { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #2e3e58; letter-spacing: 2px; }
-
-    .hero { min-height: 280px; background-size: cover; background-position: center; position: relative; }
-    .hero-overlay { position: absolute; inset: 0; background: linear-gradient(to right, rgba(9,13,22,0.95) 40%, rgba(9,13,22,0.5)); display: flex; align-items: flex-end; }
-    .hero-content { padding: 32px 24px; max-width: 700px; }
-    .hero-genres { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-    .genre-pill { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: #00cfff; background: rgba(0,207,255,.1); border: 1px solid rgba(0,207,255,.3); padding: 2px 8px; }
-    .hero-title { font-family: 'Rajdhani', sans-serif; font-size: 36px; font-weight: 700; color: #fff; letter-spacing: 2px; line-height: 1.1; margin-bottom: 8px; }
-    .hero-dev { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #6e80a0; margin-bottom: 18px; }
-    .dev-name::after { content: ' · '; }
-    .dev-name:last-child::after { content: ''; }
-    .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .loading-text { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--muted-text); letter-spacing: 2px; }
 
     .content { max-width: 1280px; margin: 0 auto; padding: 24px 20px; }
+    .detail-header { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; padding: 14px; }
+    .detail-header-bar { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; margin-bottom: 12px; }
+    .detail-header-flags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .detail-flag {
+      background: var(--surface-sunken);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted-text);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.8px;
+      padding: 4px 7px;
+      text-transform: uppercase;
+    }
+    .detail-header-grid { display: grid; gap: 14px; grid-template-columns: 300px minmax(0, 1fr); }
+    .detail-capsule {
+      background: var(--surface-sunken);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      min-height: 140px;
+      overflow: hidden;
+    }
+    .detail-capsule img { display: block; height: 100%; object-fit: cover; width: 100%; }
+    .detail-capsule-placeholder {
+      align-items: center;
+      color: var(--muted-text);
+      display: flex;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      height: 100%;
+      justify-content: center;
+      min-height: 140px;
+    }
+    .detail-header-copy { min-width: 0; }
+    .detail-title {
+      color: var(--heading-text);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 34px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .detail-subtitle {
+      color: var(--secondary-text);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+    .detail-meta-grid { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 12px; }
+    .detail-meta-item {
+      background: var(--surface-sunken);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      min-width: 0;
+      padding: 9px 10px;
+    }
+    .detail-meta-item span {
+      color: var(--muted-text);
+      display: block;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.7px;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+    .detail-meta-item strong {
+      color: var(--heading-text);
+      display: block;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 18px;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+    }
+    .detail-description {
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      color: var(--secondary-text);
+      display: -webkit-box;
+      font-size: 13px;
+      line-height: 1.55;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .detail-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .layout { display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
-    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    @media (max-width: 980px) {
+      .detail-header-grid,
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
 
     .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
-    @media (max-width: 700px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
-    .stat-card { background: #141c2e; border: 1px solid #1a2640; padding: 14px; }
-    .stat-label { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: #2e3e58; letter-spacing: 1px; margin-bottom: 6px; }
-    .stat-value { font-family: 'Rajdhani', sans-serif; font-size: 26px; font-weight: 700; color: #fff; line-height: 1; }
-    .stat-value.green { color: #3ddc84; }
-    .stat-value.accent { color: #00cfff; }
+    @media (max-width: 700px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .detail-header { padding: 12px; }
+      .detail-title { font-size: 28px; }
+      .detail-meta-grid { grid-template-columns: 1fr; }
+      .detail-actions,
+      .detail-header-bar { align-items: stretch; flex-direction: column; }
+    }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); padding: 14px; }
+    .stat-label { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--muted-text); letter-spacing: 1px; margin-bottom: 6px; }
+    .stat-value { font-family: 'Rajdhani', sans-serif; font-size: 26px; font-weight: 700; color: var(--heading-text); line-height: 1; }
+    .stat-value.green { color: var(--success); }
+    .stat-value.accent { color: var(--accent); }
     .stat-value.mono { font-family: 'Share Tech Mono', monospace; font-size: 18px; }
-    .stat-hint { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: #2e3e58; margin-top: 4px; }
+    .stat-hint { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: var(--muted-text); margin-top: 4px; }
 
-    .card { background: #141c2e; border: 1px solid #1a2640; padding: 18px; margin-bottom: 14px; }
     .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-    .card-title { font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 2px; color: #00cfff; margin-bottom: 14px; display: block; }
     .card-head .card-title { margin-bottom: 0; }
-    .card-sub { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #2e3e58; }
+    .card-sub { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--muted-text); }
     .chart-wrap { position: relative; height: 160px; }
     .chart-canvas { width: 100% !important; height: 160px !important; }
-    .chart-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #2e3e58; }
+    .chart-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--muted-text); }
 
-    .description { font-size: 14px; color: #6e80a0; line-height: 1.7; }
+    .description { font-size: 14px; color: var(--secondary-text); line-height: 1.7; }
 
-    .f-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-    .f-label { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #6e80a0; letter-spacing: 1px; }
-    .f-input { background: #0d1220; border: 1px solid #1a2640; color: #bfcfe8; padding: 8px 12px; font-family: 'Share Tech Mono', monospace; font-size: 13px; outline: none; width: 100%; }
-    .f-input:focus { border-color: #00cfff; }
     .f-textarea { resize: vertical; font-family: 'Exo 2', sans-serif; }
     .edit-form { margin-top: 4px; }
 
-    .info-rows { display: flex; flex-direction: column; gap: 0; margin-bottom: 16px; }
-    .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1a2640; }
-    .info-key { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #2e3e58; }
-    .info-val { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #6e80a0; text-align: right; max-width: 55%; }
-    .steam-link { display: block; font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: #00cfff; text-decoration: none; text-align: center; border: 1px solid rgba(0,207,255,.3); padding: 8px; transition: background 0.15s; }
-    .steam-link:hover { background: rgba(0,207,255,.08); }
+    .info-rows { margin-bottom: 16px; }
+    .info-val { text-align: right; max-width: 55%; }
+    .config-value { max-width: 64%; overflow-wrap: anywhere; }
+    .compact-launch-table { min-width: 100%; }
+    .steam-link { display: block; font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--accent-hover); text-decoration: none; text-align: center; border: 1px solid var(--accent-border); padding: 8px; transition: background 0.15s, border-color 0.15s; }
+    .steam-link:hover { background: var(--accent-soft); border-color: var(--accent); }
     .tags-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
-    .tag { font-family: 'Share Tech Mono', monospace; font-size: 9px; color: #6e80a0; background: #0d1220; border: 1px solid #1a2640; padding: 3px 8px; }
-
-    .banner { padding: 10px 16px; margin-bottom: 14px; font-family: 'Share Tech Mono', monospace; font-size: 12px; }
-    .banner.error { background: rgba(255,95,46,.1); border: 1px solid #ff5f2e; color: #ff5f2e; }
-    .banner.success { background: rgba(61,220,132,.1); border: 1px solid #3ddc84; color: #3ddc84; }
-
-    .btn-primary { background: #00cfff; color: #090d16; border: none; font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 1px; padding: 8px 20px; cursor: pointer; transition: opacity 0.2s; }
-    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-ghost { background: transparent; border: 1px solid #1a2640; color: #6e80a0; font-family: 'Rajdhani', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1px; padding: 7px 16px; cursor: pointer; transition: all 0.15s; }
-    .btn-ghost:hover { border-color: #00cfff; color: #00cfff; }
-    .btn-ghost-sm { background: transparent; border: 1px solid #1a2640; color: #6e80a0; font-family: 'Rajdhani', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 1px; padding: 3px 10px; cursor: pointer; }
-    .btn-ghost-sm:hover { border-color: #00cfff; color: #00cfff; }
-    .btn-danger { background: transparent; border: 1px solid #ff5f2e44; color: #ff5f2e; font-family: 'Rajdhani', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1px; padding: 7px 16px; cursor: pointer; transition: all 0.15s; }
-    .btn-danger:hover { background: rgba(255,95,46,.1); }
 
     .not-found { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; gap: 12px; }
-    .nf-code { font-family: 'Rajdhani', sans-serif; font-size: 80px; font-weight: 700; color: #1a2640; }
-    .nf-text { font-family: 'Share Tech Mono', monospace; font-size: 14px; color: #2e3e58; margin-bottom: 8px; }
+    .nf-code { font-family: 'Rajdhani', sans-serif; font-size: 80px; font-weight: 700; color: var(--border-strong); }
+    .nf-text { font-family: 'Share Tech Mono', monospace; font-size: 14px; color: var(--muted-text); margin-bottom: 8px; }
   `]
 })
 export class GameDetailComponent implements OnInit, AfterViewInit {
@@ -283,17 +760,28 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
 
   game: Game | null = null;
   statsHistory: OnlineStats[] = [];
+  steamDetail: SteamAppDeepData | null = null;
+  activityFeed: ActivityFeedItem[] = [];
   loading = true;
+  loadingSteamDetail = false;
   refreshingPlayers = false;
   saving = false;
   isLoggedIn = false;
   inWishlist = false;
   canDelete = false;
   showEdit = false;
+  activeTab: DetailTab = 'charts';
+  detailTabs: { id: DetailTab; label: string }[] = [
+    { id: 'charts', label: 'CHARTS' },
+    { id: 'info', label: 'INFO' },
+    { id: 'prices', label: 'PRICES' },
+    { id: 'updates', label: 'UPDATES' }
+  ];
   currentPlayers = 0;
   peakPlayers = 0;
   errorMsg = '';
   successMsg = '';
+  steamDetailError = '';
   editTitle = '';
   editDescription = '';
   editPrice = 0;
@@ -331,7 +819,10 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
         const username = localStorage.getItem('username');
         this.canDelete = !!username && game.created_by_username === username;
         this.loading = false;
+        if (this.isLoggedIn) this.checkWishlist();
         this.loadStats(id);
+        this.loadSteamDetail(game.steam_appid);
+        this.rebuildActivityFeed();
       },
       error: () => { this.loading = false; }
     });
@@ -341,7 +832,24 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
     this.api.getStatsHistory(gameId).subscribe({
       next: (stats) => {
         this.statsHistory = stats.reverse(); // oldest first
+        this.rebuildActivityFeed();
         setTimeout(() => this.drawChart(), 100);
+      }
+    });
+  }
+
+  loadSteamDetail(appid: number): void {
+    this.loadingSteamDetail = true;
+    this.steamDetailError = '';
+    this.api.getSteamAppDeepData(appid).subscribe({
+      next: (detail) => {
+        this.steamDetail = detail;
+        this.loadingSteamDetail = false;
+        this.rebuildActivityFeed();
+      },
+      error: (err) => {
+        this.loadingSteamDetail = false;
+        this.steamDetailError = err.error?.error ?? 'Could not load Steam app metadata.';
       }
     });
   }
@@ -402,6 +910,7 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
     }).subscribe({
       next: (updated) => {
         this.game = { ...this.game!, ...updated };
+        this.rebuildActivityFeed();
         this.successMsg = 'Game updated successfully!';
         this.saving = false;
         this.showEdit = false;
@@ -409,6 +918,93 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
       },
       error: () => { this.errorMsg = 'Update failed.'; this.saving = false; }
     });
+  }
+
+  setTab(tab: DetailTab): void {
+    this.activeTab = tab;
+    if (tab === 'charts') {
+      setTimeout(() => this.drawChart(), 50);
+    }
+  }
+
+  openStore(): void {
+    if (!this.game) return;
+    window.open(`https://store.steampowered.com/app/${this.game.steam_appid}`, '_blank');
+  }
+
+  openSteamDb(): void {
+    if (!this.game) return;
+    window.open(`https://steamdb.info/app/${this.game.steam_appid}/`, '_blank');
+  }
+
+  copyAppId(): void {
+    if (!this.game) return;
+    const appid = String(this.game.steam_appid);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(appid).then(() => {
+        this.successMsg = `Steam Game ID ${appid} copied.`;
+        setTimeout(() => this.successMsg = '', 2500);
+      }).catch(() => {
+        this.successMsg = `Steam Game ID: ${appid}`;
+        setTimeout(() => this.successMsg = '', 2500);
+      });
+      return;
+    }
+    this.successMsg = `Steam Game ID: ${appid}`;
+    setTimeout(() => this.successMsg = '', 2500);
+  }
+
+  priceLabel(): string {
+    if (!this.game) return '—';
+    if (this.game.is_free) return 'Free';
+    return `$${Number(this.game.price ?? 0).toFixed(2)}`;
+  }
+
+  storeHeadlinePrice(): string {
+    const preferred = this.steamDetail?.pricing?.find(price => price.country_code === 'US')
+      ?? this.steamDetail?.pricing?.[0];
+    if (preferred?.final_formatted) {
+      return preferred.final_formatted;
+    }
+    return this.priceLabel();
+  }
+
+  playersPerDollar(): string {
+    if (!this.game) return '—';
+    const price = Number(this.game.price ?? 0);
+    if (this.game.is_free || price <= 0) return 'Free app';
+    return Math.round(this.currentPlayers / price).toLocaleString();
+  }
+
+  averagePlayers(): number {
+    if (!this.statsHistory.length) return this.currentPlayers;
+    const total = this.statsHistory.reduce((sum, stat) => sum + stat.current_players, 0);
+    return Math.round(total / this.statsHistory.length);
+  }
+
+  minSnapshot(): number {
+    if (!this.statsHistory.length) return this.currentPlayers;
+    return Math.min(...this.statsHistory.map(stat => stat.current_players));
+  }
+
+  maxSnapshot(): number {
+    if (!this.statsHistory.length) return this.currentPlayers;
+    return Math.max(...this.statsHistory.map(stat => stat.current_players));
+  }
+
+  latestSnapshotTime(): string {
+    if (!this.statsHistory.length) return 'No snapshots';
+    const latest = this.statsHistory[this.statsHistory.length - 1];
+    return this.formatUtc(latest.timestamp);
+  }
+
+  trendLabel(): string {
+    if (this.statsHistory.length < 2) return 'no trend yet';
+    const first = this.statsHistory[0].current_players;
+    const last = this.statsHistory[this.statsHistory.length - 1].current_players;
+    const diff = last - first;
+    const prefix = diff > 0 ? '+' : '';
+    return `${prefix}${diff.toLocaleString()} since first snapshot`;
   }
 
   checkWishlist(): void {
@@ -425,6 +1021,129 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
     return names.length ? names.join(', ') : '—';
   }
 
+  steamPlatformsLabel(): string {
+    if (!this.steamDetail?.platforms?.length) return 'Not tracked';
+    return this.steamDetail.platforms.map(item => item.toUpperCase()).join(', ');
+  }
+
+  launchConfigLabel(launch: SteamLaunchConfig): string {
+    const parts = [
+      launch.description || 'Default launch',
+      launch.oslist || '',
+      launch.osarch || '',
+      launch.betakey ? `beta:${launch.betakey}` : ''
+    ].filter(Boolean);
+    return parts.join(' · ') || '—';
+  }
+
+  latestBranchUpdate(): string {
+    const branch = this.steamDetail?.branches?.[0];
+    if (!branch) return 'No branch data';
+    return this.formatUtc(branch.updated_at || branch.built_at);
+  }
+
+  formatUtc(value?: string | null): string {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
+  }
+
+  formatBytes(value?: number | null): string {
+    const bytes = Number(value ?? 0);
+    if (!Number.isFinite(bytes) || bytes <= 0) return '—';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let unitIndex = 0;
+    let size = bytes;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+    const precision = size >= 100 || unitIndex === 0 ? 0 : size >= 10 ? 1 : 2;
+    return `${size.toFixed(precision)} ${units[unitIndex]}`;
+  }
+
+  rebuildActivityFeed(): void {
+    const items: ActivityFeedItem[] = [];
+    const pushItem = (item: Omit<ActivityFeedItem, 'timestamp' | 'utc'> & { value?: string | null }) => {
+      const date = item.value ? new Date(item.value) : null;
+      if (!date || Number.isNaN(date.getTime())) return;
+      items.push({
+        id: item.id,
+        title: item.title,
+        subtitle: item.subtitle,
+        meta: item.meta,
+        timestamp: date.getTime(),
+        utc: this.formatUtc(item.value)
+      });
+    };
+
+    if (this.game?.updated_at) {
+      pushItem({
+        id: `record-updated:${this.game.id}`,
+        title: 'Local record updated',
+        subtitle: 'Metadata or store fields changed in the tracked database',
+        meta: 'metadata',
+        value: this.game.updated_at
+      });
+    }
+
+    if (this.game?.created_at) {
+      pushItem({
+        id: `record-created:${this.game.id}`,
+        title: 'Local record created',
+        subtitle: 'Game was added to the local catalog',
+        meta: 'catalog',
+        value: this.game.created_at
+      });
+    }
+
+    (this.steamDetail?.news_feed || []).forEach(news => {
+      pushItem({
+        id: `news:${news.gid}`,
+        title: news.title,
+        subtitle: news.contents || news.feedlabel,
+        meta: news.tags?.length ? news.tags.join(', ') : news.feedlabel,
+        value: news.date
+      });
+    });
+
+    (this.steamDetail?.branches || []).slice(0, 8).forEach(branch => {
+      pushItem({
+        id: `branch:${branch.name}`,
+        title: `Branch ${branch.name} -> build ${branch.buildid || '—'}`,
+        subtitle: branch.description || 'Steam branch metadata changed',
+        meta: 'branch',
+        value: branch.updated_at || branch.built_at
+      });
+    });
+
+    this.statsHistory.slice(-10).forEach((stat, index) => {
+      pushItem({
+        id: `snapshot:${stat.timestamp}:${index}`,
+        title: `${stat.current_players.toLocaleString()} players online`,
+        subtitle: `Peak ${stat.peak_players.toLocaleString()} in tracked history`,
+        meta: 'snapshot',
+        value: stat.timestamp
+      });
+    });
+
+    this.activityFeed = items
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 18);
+  }
+
+  onImageError(event: Event): void {
+    const image = event.target as HTMLImageElement;
+    image.style.display = 'none';
+  }
+
   goBack(): void { this.router.navigate(['/']); }
 
   drawChart(): void {
@@ -437,6 +1156,13 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
     const H = 140;
     canvas.width = W;
     canvas.height = H;
+    const rootStyles = getComputedStyle(document.documentElement);
+    const token = (name: string, fallback: string) => rootStyles.getPropertyValue(name).trim() || fallback;
+    const chartBorder = token('--border', '#25354b');
+    const chartMuted = token('--muted-text', '#697f99');
+    const chartAccent = token('--accent', '#57b8c7');
+    const chartFill = token('--accent-chart-fill', 'rgba(87, 184, 199, 0.24)');
+    const chartFade = token('--accent-chart-fade', 'rgba(87, 184, 199, 0.03)');
 
     const values = this.statsHistory.map(s => s.current_players);
     const maxVal = Math.max(...values, 1);
@@ -449,13 +1175,13 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
     ctx.clearRect(0, 0, W, H);
 
     // Grid lines
-    ctx.strokeStyle = '#1a2640';
+    ctx.strokeStyle = chartBorder;
     ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
       const y = pad.top + (chartH / 4) * i;
       ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
       const label = Math.round(maxVal - (range / 4) * i).toLocaleString();
-      ctx.fillStyle = '#2e3e58';
+      ctx.fillStyle = chartMuted;
       ctx.font = '9px Share Tech Mono, monospace';
       ctx.textAlign = 'right';
       ctx.fillText(label, pad.left - 4, y + 3);
@@ -474,14 +1200,14 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
     ctx.lineTo(getX(values.length - 1), H - pad.bottom);
     ctx.closePath();
     const grad = ctx.createLinearGradient(0, pad.top, 0, H - pad.bottom);
-    grad.addColorStop(0, 'rgba(0,207,255,0.25)');
-    grad.addColorStop(1, 'rgba(0,207,255,0.02)');
+    grad.addColorStop(0, chartFill);
+    grad.addColorStop(1, chartFade);
     ctx.fillStyle = grad;
     ctx.fill();
 
     // Line
     ctx.beginPath();
-    ctx.strokeStyle = '#00cfff';
+    ctx.strokeStyle = chartAccent;
     ctx.lineWidth = 2;
     ctx.moveTo(getX(0), getY(values[0]));
     for (let i = 1; i < values.length; i++) {
@@ -493,18 +1219,18 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
     values.forEach((v, i) => {
       ctx.beginPath();
       ctx.arc(getX(i), getY(v), 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#00cfff';
+      ctx.fillStyle = chartAccent;
       ctx.fill();
     });
 
     // X-axis timestamps
-    ctx.fillStyle = '#2e3e58';
+    ctx.fillStyle = chartMuted;
     ctx.font = '8px Share Tech Mono, monospace';
     ctx.textAlign = 'center';
     const step = Math.max(1, Math.floor(values.length / 6));
     for (let i = 0; i < values.length; i += step) {
       const t = new Date(this.statsHistory[i].timestamp);
-      const label = `${t.getHours()}:${String(t.getMinutes()).padStart(2,'0')}`;
+      const label = `${String(t.getUTCHours()).padStart(2,'0')}:${String(t.getUTCMinutes()).padStart(2,'0')}Z`;
       ctx.fillText(label, getX(i), H - pad.bottom + 12);
     }
   }

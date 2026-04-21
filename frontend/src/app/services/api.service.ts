@@ -3,7 +3,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable, BehaviorSubject, tap } from 'rxjs';
 import {
   Game, AuthResponse, LoginRequest, RegisterRequest,
-  UserProfile, OnlineStats, SteamTopGame
+  UserProfile, OnlineStats, SteamAppDeepData, SteamTopGame, SteamTopSnapshot
 } from '../interfaces/models';
 
 @Injectable({ providedIn: 'root' })
@@ -84,12 +84,20 @@ export class ApiService {
     return this.http.get<any>(`${this.API}/steam/appinfo/${appid}/`);
   }
 
+  getSteamAppDeepData(appid: number): Observable<SteamAppDeepData> {
+    return this.http.get<SteamAppDeepData>(`${this.API}/steam/deep/${appid}/`);
+  }
+
   importSteamGame(appid: number): Observable<{ created: boolean; game: Game }> {
     return this.http.post<any>(`${this.API}/steam/appinfo/${appid}/`, {});
   }
 
   getTopGames(): Observable<SteamTopGame[]> {
     return this.http.get<SteamTopGame[]>(`${this.API}/steam/top/`);
+  }
+
+  getSteamTopHistory(appid: number): Observable<SteamTopSnapshot[]> {
+    return this.http.get<SteamTopSnapshot[]>(`${this.API}/steam/history/${appid}/`);
   }
 
   // ── Stats / Charts ────────────────────────────────────────────────
@@ -102,6 +110,10 @@ export class ApiService {
 
   getProfile(): Observable<UserProfile> {
     return this.http.get<UserProfile>(`${this.API}/profile/`);
+  }
+
+  updateProfile(data: Partial<Pick<UserProfile, 'steam_id' | 'avatar_url'>>): Observable<UserProfile> {
+    return this.http.patch<UserProfile>(`${this.API}/profile/`, data);
   }
 
   addToWishlist(gameId: number): Observable<any> {

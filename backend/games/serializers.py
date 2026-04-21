@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Game, Developer, OnlineStats, UserProfile
+from .models import Game, Developer, OnlineStats, SteamTopSnapshot, UserProfile
 
 
 # ── BASE SERIALIZERS (2) ────────────────────────────────────────────────────
@@ -78,6 +78,13 @@ class OnlineStatsModelSerializer(serializers.ModelSerializer):
         if attrs.get('peak_players', 0) < attrs.get('current_players', 0):
             attrs['peak_players'] = attrs['current_players']
         return attrs
+
+
+class SteamTopSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SteamTopSnapshot
+        fields = ['appid', 'current_players', 'peak_players', 'timestamp']
+        read_only_fields = fields
 
 
 # ── AUTH SERIALIZERS ────────────────────────────────────────────────────────

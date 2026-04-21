@@ -1,0 +1,15 @@
+Node.js version v25.6.1 detected.
+Odd numbered Node.js versions will not enter LTS status and should not be used for production. For more information, please see https://nodejs.org/en/about/previous-releases/.
+node:internal/readline/interface:564
+      throw new ERR_USE_AFTER_CLOSE('readline');
+      ^
+
+Error [ERR_USE_AFTER_CLOSE]: readline was closed
+    at Interface.pause (node:internal/readline/interface:564:13)
+    at PromptUI.close (file:///C:/Users/Asus/web-dev-project/frontend/node_modules/inquirer/lib/ui/baseUI.js:53:13)
+    at PromptUI.onForceClose (file:///C:/Users/Asus/web-dev-project/frontend/node_modules/inquirer/lib/ui/baseUI.js:31:10)
+    at process.emit (node:events:520:22) {
+  code: 'ERR_USE_AFTER_CLOSE'
+}
+
+Node.js v25.6.1
