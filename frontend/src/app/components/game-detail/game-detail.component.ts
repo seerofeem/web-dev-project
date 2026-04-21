@@ -10,6 +10,7 @@ import {
   SteamAppDeepData,
   SteamLaunchConfig
 } from '../../interfaces/models';
+import { ChangeDetectorRef } from '@angular/core';
 
 type DetailTab = 'charts' | 'info' | 'prices' | 'updates' | 'admin';
 
@@ -789,16 +790,22 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
   constructor(
     private route: ActivatedRoute,
     private router: Router,
-    private api: ApiService
+    private api: ApiService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
-    this.api.isLoggedIn$.subscribe(v => {
-      this.isLoggedIn = v;
-      if (v) this.checkWishlist();
-    });
-    const id = Number(this.route.snapshot.paramMap.get('id'));
+  this.api.isLoggedIn$.subscribe(v => {
+    this.isLoggedIn = v;
+    if (v) this.checkWishlist();
+  });
+  const id = Number(this.route.snapshot.paramMap.get('id'));
+  const appid = Number(this.route.snapshot.paramMap.get('appid'));
+  if (appid) {
+    this.loadGameByAppid(appid);
+  } else {
     this.loadGame(id);
+  }
   }
 
   ngAfterViewInit(): void {
@@ -837,13 +844,59 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
       }
     });
   }
+loadGameByAppid(appid: number): void {
+  this.loading = true;
+  Promise.all([
+    this.api.getSteamAppInfo(appid).toPromise(),
+    this.api.getSteamAppDeepData(appid).toPromise()
+  ]).then(([info, deep]: [any, any]) => {
+    this.steamDetail = deep as any;
 
+    this.game = {
+      id: -appid,
+      title: info?.name || `App ${appid}`,
+      description: info?.short_description || '',
+      steam_appid: appid,
+      header_image: info?.header_image || '',
+      genres: (info?.genres || []).map((g: any) => g.description || g),
+      tags: (info?.categories || []).map((c: any) => c.description || c),
+      price: info?.price_overview?.final / 100 || 0,
+      is_free: info?.is_free || false,
+      developers: (info?.developers || []).map((name: string) => ({ name })),
+      created_at: deep?.steam_release_at || null,
+      updated_at: deep?.store_last_updated_at || null,
+      latest_players: { current: 0, peak: 0 },
+    } as any;
+
+
+    this.currentPlayers = 0;
+    this.peakPlayers = Number(deep?.peak_players ?? 0);
+    setInterval(() => {
+    this.api.getSteamPlayers(appid).subscribe({
+      next: (res: any) => {
+        this.currentPlayers = res.current_players ?? 0;
+        this.peakPlayers = Math.max(this.peakPlayers, this.currentPlayers);
+        this.cdr.detectChanges();
+      }
+    });
+  }, 1000)
+    this.canDelete = false;
+    this.loading = false;
+    this.loadingSteamDetail = false;
+    this.rebuildActivityFeed();
+    this.cdr.detectChanges();
+  }).catch(() => {
+    this.errorMsg = 'Failed to load Steam app data.';
+    this.loading = false;
+    this.cdr.detectChanges();
+  });
+}
   loadSteamDetail(appid: number): void {
     this.loadingSteamDetail = true;
     this.steamDetailError = '';
     this.api.getSteamAppDeepData(appid).subscribe({
-      next: (detail) => {
-        this.steamDetail = detail;
+      next: (data) => {
+        this.steamDetail = data as any;
         this.loadingSteamDetail = false;
         this.rebuildActivityFeed();
       },

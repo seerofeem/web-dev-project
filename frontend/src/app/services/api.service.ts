@@ -84,8 +84,8 @@ export class ApiService {
     return this.http.get<any>(`${this.API}/steam/appinfo/${appid}/`);
   }
 
-  getSteamAppDeepData(appid: number): Observable<SteamAppDeepData> {
-    return this.http.get<SteamAppDeepData>(`${this.API}/steam/deep/${appid}/`);
+  getSteamAppDeepData(appid: number) {
+  return this.http.get(`${this.API}/steam/deep/${appid}/`);
   }
 
   importSteamGame(appid: number): Observable<{ created: boolean; game: Game }> {

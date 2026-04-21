@@ -11,6 +11,10 @@ export const routes: Routes = [
     loadComponent: () => import('./components/game-detail/game-detail.component').then(m => m.GameDetailComponent)
   },
   {
+    path: 'steam/:appid',
+    loadComponent: () => import('./components/game-detail/game-detail.component').then(m => m.GameDetailComponent)
+  },
+  {
     path: 'login',
     loadComponent: () => import('./components/login/login.component').then(m => m.LoginComponent)
   },
