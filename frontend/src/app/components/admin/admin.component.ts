@@ -61,7 +61,7 @@ import { ApiService } from '../../services/api.service';
               <div class="empty">No users found yet.</div>
             } @else {
               <div class="table-wrap">
-                <table class="data-table">
+                <table class="data-table recent-users-table">
                   <thead>
                     <tr>
                       <th>User</th>
@@ -122,6 +122,7 @@ import { ApiService } from '../../services/api.service';
     .metric-card span { display: block; color: var(--muted-text); font-family: 'Share Tech Mono', monospace; font-size: 10px; margin-bottom: 6px; text-transform: uppercase; }
     .metric-card strong { color: var(--heading-text); font-family: 'Rajdhani', sans-serif; font-size: 28px; font-weight: 700; }
     .table-wrap { overflow-x: auto; }
+    .recent-users-table th { position: static; top: auto; }
     .user-cell { display: flex; align-items: center; gap: 10px; }
     .avatar { width: 42px; height: 42px; border-radius: var(--radius); background: var(--surface-sunken); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--accent-hover); font-family: 'Rajdhani', sans-serif; font-weight: 700; }
     .avatar img { width: 100%; height: 100%; object-fit: cover; }
