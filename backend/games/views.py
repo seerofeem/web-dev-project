@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 import re
 
 import requests
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
@@ -44,16 +45,34 @@ USER_ROLE_USER = 'user'
 
 
 def is_admin_user(user) -> bool:
-    return bool(user and user.is_authenticated and (user.is_staff or user.is_superuser))
+    return sync_admin_user(user)
+
+
+def sync_admin_user(user) -> bool:
+    if not user or not user.is_authenticated:
+        return False
+
+    should_be_admin = bool(
+        user.is_superuser
+        or user.is_staff
+        or user.username.strip().lower() in set(settings.STEAMDB_SYNC_ADMIN_USERNAMES)
+    )
+
+    if should_be_admin and not user.is_staff:
+        user.is_staff = True
+        user.save(update_fields=['is_staff'])
+
+    return should_be_admin
 
 
 def serialize_auth_response(user, token) -> dict:
+    is_admin = sync_admin_user(user)
     return {
         'token': token.key,
         'username': user.username,
         'email': user.email,
-        'role': USER_ROLE_ADMIN if is_admin_user(user) else USER_ROLE_USER,
-        'is_admin': is_admin_user(user),
+        'role': USER_ROLE_ADMIN if is_admin else USER_ROLE_USER,
+        'is_admin': is_admin,
     }
 
 
@@ -459,6 +478,7 @@ def logout_view(request):
 @permission_classes([IsAuthenticated])
 def my_profile(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    sync_admin_user(request.user)
     if request.method == 'GET':
         return Response(UserProfileSerializer(profile).data)
     serializer = UserProfileSerializer(profile, data=request.data, partial=True)

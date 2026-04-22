@@ -88,6 +88,16 @@ export class ApiService {
     this._role$.next('user');
   }
 
+  hydrateSession(): void {
+    if (!localStorage.getItem('token')) {
+      return;
+    }
+
+    this.getProfile().subscribe({
+      error: () => {}
+    });
+  }
+
   // ── Games ─────────────────────────────────────────────────────────
 
   getGames(): Observable<{ results?: Game[]; count?: number } | Game[]> {

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -97,4 +98,10 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+]
+
+STEAMDB_SYNC_ADMIN_USERNAMES = [
+    username.strip().lower()
+    for username in os.getenv('STEAMDB_SYNC_ADMIN_USERNAMES', 'demo').split(',')
+    if username.strip()
 ]
