@@ -533,7 +533,43 @@ def admin_overview(request):
         ],
     })
 
-
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def steam_top_news(request):
+    try:
+        url = f"{STEAM_API_BASE}/ISteamChartsService/GetMostPlayedGames/v1/"
+        response = requests.get(url, timeout=8)
+        response.raise_for_status()
+        rows = response.json().get('response', {}).get('ranks', [])[:10]
+        
+        all_news = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {
+                executor.submit(fetch_steam_news, int(row['appid']), 3): int(row['appid'])
+                for row in rows if row.get('appid')
+            }
+            for future in as_completed(futures):
+                appid = futures[future]
+                try:
+                    items = future.result()
+                    for item in items:
+                        all_news.append({
+                            'appid': appid,
+                            'gid': str(item.get('gid', '')),
+                            'title': item.get('title', ''),
+                            'url': item.get('url', ''),
+                            'author': item.get('author', '') or 'Steam',
+                            'feedlabel': item.get('feedlabel', ''),
+                            'date': timestamp_to_iso(item.get('date')),
+                            'contents': clean_text(item.get('contents', ''), 200),
+                        })
+                except Exception:
+                    continue
+        
+        all_news.sort(key=lambda x: x['date'] or '', reverse=True)
+        return Response(all_news[:50])
+    except Exception as e:
+        return Response({'error': str(e)}, status=502)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def online_stats_history(request, game_id):

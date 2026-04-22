@@ -12,7 +12,7 @@ urlpatterns = [
     path('steam/deep/<int:appid>/', views.steam_app_deep_detail, name='steam-app-deep-detail'),
     path('steam/top/', views.steam_top_games, name='steam-top'),
     path('steam/history/<int:appid>/', views.steam_top_history, name='steam-top-history'),
-
+    path('steam/feed/', views.steam_top_news, name='steam-top-news'),
     # ── Stats History (for charts) ─────────────────────────────────
     path('games/<int:game_id>/stats/', views.online_stats_history, name='stats-history'),
 

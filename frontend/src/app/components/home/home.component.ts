@@ -5,7 +5,7 @@ import { ApiService } from '../../services/api.service';
 import { SteamTopGame, SteamTopSnapshot } from '../../interfaces/models';
 import { ChangeDetectorRef } from '@angular/core';
 
-type View = 'overview' | 'charts' | 'prices' | 'upcoming';
+type View = 'overview' | 'charts' | 'prices' | 'upcoming' | 'feed';
 
 interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
 
@@ -42,6 +42,7 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
         <button [class.active]="activeView === 'charts'" (click)="activeView = 'charts'">Charts</button>
         <button [class.active]="activeView === 'prices'" (click)="activeView = 'prices'; loadPrices()">Prices</button>
         <button [class.active]="activeView === 'upcoming'" (click)="activeView = 'upcoming'; loadUpcoming()">Upcoming</button>
+        <button [class.active]="activeView === 'feed'" (click)="activeView = 'feed'; loadFeed()">Feed</button>
       </nav>
 
       <!-- OVERVIEW -->
@@ -251,6 +252,36 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
     </div>
   </main>
 }
+  @if (activeView === 'feed') {
+  <main class="top-games-wrap">
+    <div class="table-header">
+      <div>
+        <h1 class="table-title">Steam News Feed</h1>
+        <p class="table-sub">Latest updates from top 10 most played games</p>
+      </div>
+    </div>
+    @if (feedLoading) {
+      <div class="loading-bar"><div class="loading-fill"></div></div>
+    }
+    <div class="feed-list">
+      @for (item of feedItems; track item.gid) {
+        <a class="feed-item" [href]="item.url" target="_blank">
+          <img [src]="steamHeaderUrl(item.appid)" (error)="onImageError($event)" class="feed-thumb" />
+          <div class="feed-body">
+            <div class="feed-game">{{ gameTitleForApp(item.appid) }}</div>
+            <div class="feed-title">{{ item.title }}</div>
+            <div class="feed-content">{{ item.contents }}</div>
+            <div class="feed-meta">
+              <span>{{ item.author }}</span>
+              <span>{{ item.feedlabel }}</span>
+              <span>{{ item.date | date:'dd MMM yyyy' }}</span>
+            </div>
+          </div>
+        </a>
+      }
+    </div>
+  </main>
+}
   `,  
                 
   styles: [`
@@ -325,6 +356,15 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
       padding: 10px 14px 8px;
       border-bottom: 1px solid var(--border, #25354b);
     }
+    .feed-list { display: flex; flex-direction: column; gap: 10px; }
+.feed-item { display: flex; gap: 14px; background: var(--surface, #1b2838); border: 1px solid var(--border, #25354b); border-radius: 8px; cursor: pointer; padding: 14px; text-decoration: none; transition: border-color 0.15s; }
+.feed-item:hover { border-color: var(--accent, #57b8c7); }
+.feed-thumb { width: 120px; height: 68px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.feed-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.feed-game { color: var(--accent-hover, #66c0f4); font-family: 'Share Tech Mono', monospace; font-size: 10px; text-transform: uppercase; }
+.feed-title { color: var(--heading-text, #fff); font-family: 'Rajdhani', sans-serif; font-size: 18px; font-weight: 700; }
+.feed-content { color: var(--secondary-text, #aab6c0); font-size: 13px; line-height: 1.5; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.feed-meta { color: var(--muted-text, #75838f); display: flex; font-family: 'Share Tech Mono', monospace; font-size: 10px; gap: 12px; margin-top: 2px; }
     .chart-game-btn {
       display: flex;
       align-items: center;
@@ -431,7 +471,8 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly svgW = 800;
   readonly svgH = 300;
   readonly pad = { top: 20, right: 20, bottom: 28, left: 60 };
-  
+  feedItems: any[] = [];
+  feedLoading = false;
   upcomingGames: any[] = [];
   upcomingLoading = false;
   priceSort: 'high' | 'low' = 'high';
@@ -462,7 +503,18 @@ export class HomeComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     if (this.topGamesTimer) clearInterval(this.topGamesTimer);
   }
-
+  loadFeed(): void {
+  if (this.feedItems.length) return;
+  this.feedLoading = true;
+  this.api.getTopNewsFeed().subscribe({
+    next: (data) => {
+      this.feedItems = data;
+      this.feedLoading = false;
+      this.cdr.detectChanges();
+    },
+    error: () => { this.feedLoading = false; this.cdr.detectChanges(); }
+  });
+}
   loadTopGames(): void {
     this.loadingTop = true;
     this.api.getTopGames().subscribe({
