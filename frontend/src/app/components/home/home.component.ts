@@ -60,8 +60,8 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
           </div>
 
           @if (loadingTop && !topGames.length) {
-            <div class="loading-bar"><div class="loading-fill"></div></div>
-          }
+  <div class="loading-bar"><div class="loading-fill"></div></div>
+}
 
           <div class="data-table-wrap">
             <table class="data-table">
@@ -386,7 +386,8 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
     .chart-game-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow: hidden; }
     .chart-game-info strong { font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 700; color: var(--heading-text, #fff); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
     .chart-game-count { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--success, #5ba85a); }
-
+    .loading-screen { padding: 40px 20px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+    .loading-hint { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted-text, #697f99); }
     .chart-panel {
       background: var(--surface, #1b2838);
       border: 1px solid var(--border, #25354b);
@@ -477,7 +478,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   upcomingLoading = false;
   priceSort: 'high' | 'low' = 'high';
   priceCache: Record<number, { name: string; price: string; is_free: boolean; loading: boolean }> = {};
-  private topGamesTimer: ReturnType<typeof setInterval> | null = null;
+  private topGamesTimer: any = null;
   private readonly refreshMs = 5000;
 
   private steamNameCache: Record<number, string> = {
@@ -491,11 +492,9 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   constructor(private api: ApiService, private router: Router, private cdr: ChangeDetectorRef, private route: ActivatedRoute) {}
 
-  ngOnInit(): void {
-  this.route.queryParamMap.subscribe((params: any) => {
-    const view = params.get('view') as View | null;
-    if (view) this.activeView = view;
-  });
+ ngOnInit(): void {
+  this.activeView = 'overview';
+  this.cdr.detectChanges();
   this.loadTopGames();
   this.topGamesTimer = setInterval(() => this.loadTopGames(), this.refreshMs);
 }

@@ -100,6 +100,7 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
+
 STEAMDB_SYNC_ADMIN_USERNAMES = [
     username.strip().lower()
     for username in os.getenv('STEAMDB_SYNC_ADMIN_USERNAMES', 'demo').split(',')

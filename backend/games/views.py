@@ -403,8 +403,6 @@ class SteamGameInfoView(APIView):
         """Import a Steam game into the local database."""
         if not request.user.is_authenticated:
             return Response({'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
-        if not is_admin_user(request.user):
-            return Response({'detail': ADMIN_REQUIRED_DETAIL}, status=status.HTTP_403_FORBIDDEN)
         try:
             data = fetch_store_app_details(appid, "us")
             if not data:

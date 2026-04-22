@@ -930,7 +930,7 @@ loadGameByAppid(appid: number): void {
       }
     });
   }
-
+  
   // click event #1
   refreshPlayers(): void {
     if (!this.game) return;
@@ -953,19 +953,52 @@ loadGameByAppid(appid: number): void {
 
   // click event #2
   toggleWishlist(): void {
-    if (!this.game) return;
-    const obs = this.inWishlist
-      ? this.api.removeFromWishlist(this.game.id)
-      : this.api.addToWishlist(this.game.id);
-    obs.subscribe({
-      next: (res) => {
-        this.inWishlist = !this.inWishlist;
-        this.successMsg = res.detail;
+  if (!this.game) return;
+
+  if (this.inWishlist) {
+    this.api.removeFromWishlist(this.game.id).subscribe({
+      next: () => {
+        this.inWishlist = false;
+        this.successMsg = 'Removed from wishlist.';
         setTimeout(() => this.successMsg = '', 3000);
       },
-      error: (err) => { this.errorMsg = err.error?.detail ?? 'Wishlist error.'; }
+      error: () => { this.errorMsg = 'Failed to remove from wishlist.'; }
     });
+    return;
   }
+
+  if (this.game.id < 0) {
+    // auto-import then add to wishlist
+    this.successMsg = 'Importing game...';
+    this.api.importSteamGame(this.game.steam_appid).subscribe({
+      next: (res) => {
+        this.game!.id = res.game.id;
+        this.api.addToWishlist(res.game.id).subscribe({
+          next: () => {
+            this.inWishlist = true;
+            this.successMsg = 'Added to wishlist!';
+            setTimeout(() => this.successMsg = '', 3000);
+          },
+          error: () => { this.errorMsg = 'Failed to add to wishlist.'; }
+        });
+      },
+      error: () => {
+        this.errorMsg = 'Failed to import game. Try again.';
+        this.successMsg = '';
+      }
+    });
+    return;
+  }
+
+  this.api.addToWishlist(this.game.id).subscribe({
+    next: () => {
+      this.inWishlist = true;
+      this.successMsg = 'Added to wishlist!';
+      setTimeout(() => this.successMsg = '', 3000);
+    },
+    error: () => { this.errorMsg = 'Failed to add to wishlist.'; }
+  });
+}
 
   // click event #3
   deleteGame(): void {
