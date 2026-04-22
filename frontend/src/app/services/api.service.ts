@@ -119,7 +119,9 @@ export class ApiService {
   deleteGame(id: number): Observable<void> {
     return this.http.delete<void>(`${this.API}/games/${id}/`);
   }
-
+  getTopGamesExtended(limit: number): Observable<SteamTopGame[]> {
+  return this.http.get<SteamTopGame[]>(`${this.API}/steam/top/extended/?limit=${limit}`);
+}
   // ── Steam API ─────────────────────────────────────────────────────
 
   getSteamPlayers(appid: number): Observable<{ appid: number; current_players: number; peak_players: number }> {

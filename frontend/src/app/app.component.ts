@@ -22,6 +22,7 @@ import { Router } from '@angular/router';
         <button (click)="navigate('/', 'overview')">Overview</button>
         <button (click)="navigate('/', 'charts')">Charts</button>
         <button (click)="navigate('/', 'prices')">Prices</button>
+        <button (click)="navigate('/', 'feed')">Feed</button>
         <button (click)="navigate('/profile', null)">Profile</button>
       </nav>
     </aside>

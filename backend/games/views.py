@@ -587,7 +587,24 @@ def steam_top_history(request, appid):
     snapshots = SteamTopSnapshot.objects.filter(appid=appid, timestamp__gte=since).order_by('timestamp')
     serializer = SteamTopSnapshotSerializer(snapshots, many=True)
     return Response(serializer.data)
-
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def steam_top_games_extended(request):
+    try:
+        limit = int(request.query_params.get('limit', 20))
+        limit = min(limit, 100)
+        url = f"{STEAM_API_BASE}/ISteamChartsService/GetMostPlayedGames/v1/"
+        response = requests.get(url, timeout=8)
+        response.raise_for_status()
+        rows = response.json().get('response', {}).get('ranks', [])[:limit]
+        return Response([{
+            'appid': int(row.get('appid', 0)),
+            'rank': int(row.get('rank', 0)),
+            'concurrent_in_game': int(row.get('concurrent_in_game', 0)),
+            'peak_in_game': int(row.get('peak_in_game', 0)),
+        } for row in rows])
+    except Exception as e:
+        return Response({'error': str(e)}, status=502)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def steam_upcoming_games(request):

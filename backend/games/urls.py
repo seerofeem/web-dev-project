@@ -15,7 +15,7 @@ urlpatterns = [
     path('steam/feed/', views.steam_top_news, name='steam-top-news'),
     # ── Stats History (for charts) ─────────────────────────────────
     path('games/<int:game_id>/stats/', views.online_stats_history, name='stats-history'),
-
+    path('steam/top/extended/', views.steam_top_games_extended, name='steam-top-extended'),
     # ── Auth ───────────────────────────────────────────────────────
     path('auth/register/', views.register, name='register'),
     path('auth/login/', views.login_view, name='login'),

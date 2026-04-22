@@ -199,7 +199,7 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
     <div class="table-header">
       <div>
         <h1 class="table-title">Game Prices</h1>
-        <p class="table-sub">Steam store prices · {{ topGames.length }} games</p>
+        <p class="table-sub">Steam store prices · {{ 50 }} games</p>
       </div>
       <div class="price-sort-btns">
         <button [class.active]="priceSort === 'high'" (click)="priceSort = 'high'">Highest first</button>
@@ -529,16 +529,19 @@ export class HomeComponent implements OnInit, OnDestroy {
 error: () => { this.loadingTop = false; this.cdr.detectChanges(); }
     });
   }
-  get sortedByPrice() {
-  const games = this.topGames.map(g => ({
-    ...g,
-    priceData: this.priceCache[g.appid]
-  }));
-  return games.sort((a, b) => {
-    const pa = a.priceData?.is_free ? 0 : parseFloat(a.priceData?.price?.replace(/[^0-9.]/g, '') || '0');
-    const pb = b.priceData?.is_free ? 0 : parseFloat(b.priceData?.price?.replace(/[^0-9.]/g, '') || '0');
-    return this.priceSort === 'high' ? pb - pa : pa - pb;
-  });
+get sortedByPrice() {
+  return Object.entries(this.priceCache)
+    .filter(([_, v]) => !v.loading)
+    .map(([appid, data]) => ({
+      appid: Number(appid),
+      ...data,
+      concurrent_in_game: this.topGames.find(g => g.appid === Number(appid))?.concurrent_in_game ?? 0
+    }))
+    .sort((a, b) => {
+      const pa = a.is_free ? 0 : parseFloat(a.price?.replace(/[^0-9.]/g, '') || '0');
+      const pb = b.is_free ? 0 : parseFloat(b.price?.replace(/[^0-9.]/g, '') || '0');
+      return this.priceSort === 'high' ? pb - pa : pa - pb;
+    });
 }
   loadUpcoming(): void {
   if (this.upcomingGames.length) return;
@@ -560,47 +563,48 @@ formatPrice(item: any): string {
   return '$' + (item.final_price / 100).toFixed(2);
 }
 loadPrices(): void {
-  this.topGames.forEach((g, i) => {
-    if (this.priceCache[g.appid]?.loading === false) return;
-    this.priceCache[g.appid] = { name: this.gameTitleForApp(g.appid), price: '...', is_free: false, loading: true };
-    
-    const tryFetch = (delay: number) => {
-      setTimeout(() => {
-        this.api.getSteamAppInfo(g.appid).subscribe({
-          next: (data: any) => {
-            this.priceCache[g.appid] = {
-              name: data?.name || this.gameTitleForApp(g.appid),
-              price: data?.price_overview?.final_formatted || (data?.is_free ? 'Free' : '—'),
-              is_free: data?.is_free || false,
-              loading: false
-            };
-            this.cdr.detectChanges();
-          },
-          error: () => {
-            // retry once after 3 seconds
-            setTimeout(() => {
-              this.api.getSteamAppInfo(g.appid).subscribe({
-                next: (data: any) => {
-                  this.priceCache[g.appid] = {
-                    name: data?.name || this.gameTitleForApp(g.appid),
-                    price: data?.price_overview?.final_formatted || (data?.is_free ? 'Free' : '—'),
-                    is_free: data?.is_free || false,
-                    loading: false
-                  };
-                  this.cdr.detectChanges();
-                },
-                error: () => {
-                  this.priceCache[g.appid] = { name: this.gameTitleForApp(g.appid), price: '—', is_free: false, loading: false };
-                  this.cdr.detectChanges();
-                }
-              });
-            }, 3000);
-          }
-        });
-      }, delay);
-    };
-
-    tryFetch(i * 500);
+  if (Object.keys(this.priceCache).length) return;
+  this.api.getTopGamesExtended(50).subscribe({
+    next: (data) => {
+      data.forEach((g, i) => {
+        this.priceCache[g.appid] = { name: this.gameTitleForApp(g.appid), price: '...', is_free: false, loading: true };
+        const tryFetch = () => {
+          setTimeout(() => {
+            this.api.getSteamAppInfo(g.appid).subscribe({
+              next: (info: any) => {
+                this.priceCache[g.appid] = {
+                  name: info?.name || this.gameTitleForApp(g.appid),
+                  price: info?.price_overview?.final_formatted || (info?.is_free ? 'Free' : '—'),
+                  is_free: info?.is_free || false,
+                  loading: false
+                };
+                this.cdr.detectChanges();
+              },
+              error: () => {
+                setTimeout(() => {
+                  this.api.getSteamAppInfo(g.appid).subscribe({
+                    next: (info: any) => {
+                      this.priceCache[g.appid] = {
+                        name: info?.name || this.gameTitleForApp(g.appid),
+                        price: info?.price_overview?.final_formatted || (info?.is_free ? 'Free' : '—'),
+                        is_free: info?.is_free || false,
+                        loading: false
+                      };
+                      this.cdr.detectChanges();
+                    },
+                    error: () => {
+                      this.priceCache[g.appid] = { name: this.gameTitleForApp(g.appid), price: '—', is_free: false, loading: false };
+                      this.cdr.detectChanges();
+                    }
+                  });
+                }, 3000);
+              }
+            });
+          }, i * 500);
+        };
+        tryFetch();
+      });
+    }
   });
 }
   selectGame(appid: number): void {
