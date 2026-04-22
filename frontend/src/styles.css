@@ -1300,10 +1300,8 @@ input, textarea { font-family: inherit; }
   margin-top: 1px;
 }
 
-.data-table-wrap {
-  position: relative;
-  overflow-x: auto;
-}
+.data-table-wrap { overflow: auto; max-height: 400px; }
+.data-table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface, #1b2228); }
 
 .data-table {
   border-collapse: collapse;
