@@ -6,7 +6,7 @@ import { Subscription, filter } from 'rxjs';
 import { Game, SteamTopGame } from '../../interfaces/models';
 import { ApiService } from '../../services/api.service';
 
-type HomePanel = 'overview' | 'charts' | 'prices' | 'updates' | 'database';
+type HomePanel = 'overview' | 'charts' | 'prices' | 'upcoming' | 'feed';
 type SearchResultKind = 'panel' | 'game' | 'steam' | 'route' | 'query';
 
 interface ServiceLink {
@@ -482,7 +482,7 @@ interface SearchResult {
   border-radius: 14px;
   box-shadow: 0 22px 48px rgba(0,0,0,0.9);
   overflow: hidden;
-  z-index: 9999;
+  z-index: 10000;
 }
 
     .search-head,
@@ -767,21 +767,21 @@ export class NavbarComponent implements OnInit, OnDestroy {
   activeSearchIndex = 0;
 
   readonly primaryLinks: ServiceLink[] = [
-    { id: 'overview', label: 'Overview', hint: 'home + scanner', panel: 'overview' },
-    { id: 'charts', label: 'Charts', hint: 'top 20 + live', panel: 'charts' },
-    { id: 'prices', label: 'Prices', hint: 'catalog math', panel: 'prices' },
-    { id: 'updates', label: 'Updates', hint: 'history + patches', panel: 'updates' },
-    { id: 'database', label: 'Database', hint: 'filters + explorer', panel: 'database' },
-    { id: 'profile', label: 'Profile', hint: 'wishlist desk', route: '/profile' }
-  ];
+  { id: 'overview', label: 'Overview', hint: 'top games · live', panel: 'overview' },
+  { id: 'charts', label: 'Charts', hint: 'player history', panel: 'charts' },
+  { id: 'prices', label: 'Prices', hint: 'catalog math', panel: 'prices' },
+  { id: 'upcoming', label: 'Upcoming', hint: 'coming soon', panel: 'upcoming' },
+  { id: 'feed', label: 'Feed', hint: 'steam news', panel: 'feed' },
+  { id: 'profile', label: 'Profile', hint: 'wishlist desk', route: '/profile' }
+];
 
-  readonly categories: ServiceCategory[] = [
-    { id: 'pulse', code: '01', title: 'Player Pulse', note: 'Live concurrency, rank flow, broadcast view.', panel: 'charts' },
-    { id: 'catalog', code: '02', title: 'Catalog Desk', note: 'Search local collection, genres, tags, app ids.', panel: 'database' },
-    { id: 'pricing', code: '03', title: 'Pricing Board', note: 'Free vs paid mix, buckets, and catalog value.', panel: 'prices' },
-    { id: 'updates', code: '04', title: 'Release Watch', note: 'Recent changes, update timestamps, patch feed.', panel: 'updates' },
-    { id: 'account', code: '05', title: 'Account Desk', note: 'Profile tools, wishlist, auth session status.', route: '/profile' }
-  ];
+readonly categories: ServiceCategory[] = [
+  { id: 'overview', code: '01', title: 'Overview', note: 'Live top games ranked by current players.', panel: 'overview' },
+  { id: 'charts', code: '02', title: 'Charts', note: 'Player history graphs with gain indicators.', panel: 'charts' },
+  { id: 'prices', code: '03', title: 'Prices', note: 'Multi-currency price grid for top games.', panel: 'prices' },
+  { id: 'upcoming', code: '04', title: 'Upcoming', note: 'Coming soon games with release dates.', panel: 'upcoming' },
+  { id: 'feed', code: '05', title: 'Feed', note: 'Steam news from top most played games.', panel: 'feed' },
+];
 
   private readonly subscriptions = new Subscription();
   private readonly steamNameCache: Record<number, string> = {
@@ -1007,7 +1007,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
         window.open(`https://store.steampowered.com/app/${result.appid}`, '_blank');
         break;
       case 'query':
-        this.navigateHome('database', result.query);
+        this.navigateHome('overview', result.query);
         break;
     }
 
@@ -1070,6 +1070,23 @@ export class NavbarComponent implements OnInit, OnDestroy {
       if (!existing || existing.score < result.score) {
         results.set(result.id, result);
       }
+this.topGames.forEach(game => {
+  const title = this.gameTitleForApp(game.appid);
+  const score = Math.max(
+    this.matchScore(query, title.toLowerCase()),
+    this.matchScore(query, String(game.appid))
+  );
+  if (score < 0) return;
+  results.set(`steam:${game.appid}`, {
+  id: `steam:${game.appid}`,
+  kind: 'steam',
+  title,
+  subtitle: `${Number(game.concurrent_in_game).toLocaleString()} players online`,
+  meta: `#${game.rank}`,
+  appid: game.appid,
+  score: score + 50
+});
+});
     };
 
     const navResults = this.primaryLinks.map(link => ({
@@ -1108,7 +1125,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
         title: `Search database for "${this.searchQuery.trim()}"`,
         subtitle: 'Open the explorer with filters pre-filled from the header search.',
         meta: 'database',
-        panel: 'database',
+        panel: 'overview',
         query: this.searchQuery.trim(),
         score: 160
       });
@@ -1189,7 +1206,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
         title: 'Open database',
         subtitle: 'Browse the local catalog and start filtering from there.',
         meta: 'database',
-        panel: 'database',
+        panel: 'overview',
         score: 1
       }];
     }
@@ -1210,15 +1227,15 @@ export class NavbarComponent implements OnInit, OnDestroy {
   }
 
   private navigateHome(panel: HomePanel = 'overview', query = ''): void {
-    const queryParams: Record<string, string> = {};
-    if (panel !== 'overview') {
-      queryParams['panel'] = panel;
-    }
-    if (query.trim()) {
-      queryParams['q'] = query.trim();
-    }
-    this.router.navigate(['/'], { queryParams });
+  const queryParams: Record<string, string> = {};
+  if (panel) {
+    queryParams['view'] = panel;
   }
+  if (query.trim()) {
+    queryParams['q'] = query.trim();
+  }
+  this.router.navigate(['/'], { queryParams });
+}
 
   private syncRoute(url: string): void {
     const tree = this.router.parseUrl(url);
