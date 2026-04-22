@@ -110,11 +110,53 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', read_only=True)
-    email = serializers.EmailField(source='user.email', read_only=True)
+    username = serializers.CharField(source='user.username', required=False)
+    email = serializers.EmailField(source='user.email', required=False, allow_blank=True)
     wishlist = GameModelSerializer(many=True, read_only=True)
+    role = serializers.SerializerMethodField()
+    is_admin = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
-        fields = ['id', 'username', 'email', 'steam_id', 'avatar_url', 'wishlist', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'username', 'email', 'role', 'is_admin', 'steam_id', 'avatar_url', 'wishlist', 'created_at']
+        read_only_fields = ['id', 'created_at', 'role', 'is_admin', 'wishlist']
+
+    def get_role(self, obj):
+        return 'admin' if obj.user.is_staff or obj.user.is_superuser else 'user'
+
+    def get_is_admin(self, obj):
+        return bool(obj.user.is_staff or obj.user.is_superuser)
+
+    def validate(self, attrs):
+        user_data = attrs.get('user', {})
+        current_user = self.instance.user if self.instance else None
+
+        username = user_data.get('username')
+        if username:
+            username_exists = User.objects.exclude(pk=getattr(current_user, 'pk', None)).filter(username__iexact=username).exists()
+            if username_exists:
+                raise serializers.ValidationError({'username': 'This username is already taken.'})
+
+        email = user_data.get('email')
+        if email:
+            email_exists = User.objects.exclude(pk=getattr(current_user, 'pk', None)).filter(email__iexact=email).exists()
+            if email_exists:
+                raise serializers.ValidationError({'email': 'This email is already in use.'})
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        user_data = validated_data.pop('user', {})
+        user = instance.user
+
+        if 'username' in user_data:
+            user.username = user_data['username']
+        if 'email' in user_data:
+            user.email = user_data['email']
+        user.save(update_fields=['username', 'email'])
+
+        for field in ['steam_id', 'avatar_url']:
+            if field in validated_data:
+                setattr(instance, field, validated_data[field])
+        instance.save()
+        return instance

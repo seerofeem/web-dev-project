@@ -1,3 +1,5 @@
+export type UserRole = 'user' | 'admin';
+
 export interface Developer {
   id: number;
   name: string;
@@ -157,6 +159,8 @@ export interface UserProfile {
   id: number;
   username: string;
   email: string;
+  role: UserRole;
+  is_admin: boolean;
   steam_id: string;
   avatar_url: string;
   wishlist: Game[];
@@ -166,6 +170,9 @@ export interface UserProfile {
 export interface AuthResponse {
   token: string;
   username: string;
+  email: string;
+  role: UserRole;
+  is_admin: boolean;
 }
 
 export interface LoginRequest {
@@ -183,4 +190,27 @@ export interface RegisterRequest {
 export interface ApiError {
   detail?: string;
   [key: string]: any;
+}
+
+export interface AdminRecentUser {
+  id: number;
+  username: string;
+  email: string;
+  role: UserRole;
+  is_admin: boolean;
+  date_joined: string;
+  last_login?: string | null;
+  avatar_url: string;
+  steam_id: string;
+}
+
+export interface AdminOverview {
+  counts: {
+    users_total: number;
+    admins_total: number;
+    games_total: number;
+    wishlist_items_total: number;
+    active_sessions_total: number;
+  };
+  recent_users: AdminRecentUser[];
 }

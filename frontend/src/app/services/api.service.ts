@@ -3,7 +3,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable, BehaviorSubject, tap } from 'rxjs';
 import {
   Game, AuthResponse, LoginRequest, RegisterRequest,
-  UserProfile, OnlineStats, SteamAppDeepData, SteamTopGame, SteamTopSnapshot
+  UserProfile, OnlineStats, SteamAppDeepData, SteamTopGame, SteamTopSnapshot, AdminOverview, UserRole
 } from '../interfaces/models';
 
 @Injectable({ providedIn: 'root' })
@@ -12,9 +12,13 @@ export class ApiService {
 
   private _isLoggedIn$ = new BehaviorSubject<boolean>(!!localStorage.getItem('token'));
   private _username$ = new BehaviorSubject<string>(localStorage.getItem('username') || '');
+  private _isAdmin$ = new BehaviorSubject<boolean>(localStorage.getItem('is_admin') === 'true');
+  private _role$ = new BehaviorSubject<UserRole>(localStorage.getItem('user_role') === 'admin' ? 'admin' : 'user');
 
   isLoggedIn$ = this._isLoggedIn$.asObservable();
   username$ = this._username$.asObservable();
+  isAdmin$ = this._isAdmin$.asObservable();
+  role$ = this._role$.asObservable();
 
   constructor(private http: HttpClient) {}
 
@@ -23,8 +27,14 @@ export class ApiService {
       __APP_CONFIG__?: { apiUrl?: string };
     };
     const configuredApiUrl = appWindow.__APP_CONFIG__?.apiUrl?.trim();
+    const normalizedConfiguredApiUrl = configuredApiUrl?.replace(/\/+$/, '');
 
-    return (configuredApiUrl || 'http://localhost:8000/api').replace(/\/+$/, '');
+    if (normalizedConfiguredApiUrl) {
+      return normalizedConfiguredApiUrl;
+    }
+
+    const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    return isLocalhost ? 'http://localhost:8000/api' : '/api';
   }
 
   // ── Auth ──────────────────────────────────────────────────────────
@@ -50,15 +60,32 @@ export class ApiService {
   private storeAuth(res: AuthResponse): void {
     localStorage.setItem('token', res.token);
     localStorage.setItem('username', res.username);
+    localStorage.setItem('is_admin', String(res.is_admin));
+    localStorage.setItem('user_role', res.role);
     this._isLoggedIn$.next(true);
     this._username$.next(res.username);
+    this._isAdmin$.next(res.is_admin);
+    this._role$.next(res.role);
+  }
+
+  private syncProfileState(profile: Pick<UserProfile, 'username' | 'role' | 'is_admin'>): void {
+    localStorage.setItem('username', profile.username);
+    localStorage.setItem('is_admin', String(profile.is_admin));
+    localStorage.setItem('user_role', profile.role);
+    this._username$.next(profile.username);
+    this._isAdmin$.next(profile.is_admin);
+    this._role$.next(profile.role);
   }
 
   clearAuth(): void {
     localStorage.removeItem('token');
     localStorage.removeItem('username');
+    localStorage.removeItem('is_admin');
+    localStorage.removeItem('user_role');
     this._isLoggedIn$.next(false);
     this._username$.next('');
+    this._isAdmin$.next(false);
+    this._role$.next('user');
   }
 
   // ── Games ─────────────────────────────────────────────────────────
@@ -118,11 +145,15 @@ export class ApiService {
   // ── Profile & Wishlist ────────────────────────────────────────────
 
   getProfile(): Observable<UserProfile> {
-    return this.http.get<UserProfile>(`${this.API}/profile/`);
+    return this.http.get<UserProfile>(`${this.API}/profile/`).pipe(
+      tap(profile => this.syncProfileState(profile))
+    );
   }
 
-  updateProfile(data: Partial<Pick<UserProfile, 'steam_id' | 'avatar_url'>>): Observable<UserProfile> {
-    return this.http.patch<UserProfile>(`${this.API}/profile/`, data);
+  updateProfile(data: Partial<Pick<UserProfile, 'username' | 'email' | 'steam_id' | 'avatar_url'>>): Observable<UserProfile> {
+    return this.http.patch<UserProfile>(`${this.API}/profile/`, data).pipe(
+      tap(profile => this.syncProfileState(profile))
+    );
   }
 
   addToWishlist(gameId: number): Observable<any> {
@@ -131,5 +162,9 @@ export class ApiService {
 
   removeFromWishlist(gameId: number): Observable<any> {
     return this.http.delete(`${this.API}/profile/wishlist/${gameId}/`);
+  }
+
+  getAdminOverview(): Observable<AdminOverview> {
+    return this.http.get<AdminOverview>(`${this.API}/admin/overview/`);
   }
 }

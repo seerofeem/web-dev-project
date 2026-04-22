@@ -114,7 +114,7 @@ interface ActivityFeedItem {
                     <button class="btn-ghost" (click)="toggleWishlist()">
                       {{ inWishlist ? 'IN WISHLIST' : 'ADD TO WISHLIST' }}
                     </button>
-                    @if (canDelete) {
+                    @if (isAdmin && canDelete) {
                       <button class="btn-danger" (click)="deleteGame()">DELETE</button>
                     }
                   }
@@ -167,7 +167,7 @@ interface ActivityFeedItem {
                     {{ tab.label }}
                   </button>
                 }
-                @if (isLoggedIn) {
+                @if (isAdmin) {
                   <button [class.active]="activeTab === 'admin'" (click)="setTab('admin')">ADMIN</button>
                 }
               </nav>
@@ -493,7 +493,7 @@ interface ActivityFeedItem {
                 </div>
               }
 
-              @if (activeTab === 'admin' && isLoggedIn) {
+              @if (activeTab === 'admin' && isAdmin) {
                 <div class="card">
                   <div class="card-head">
                     <span class="card-title">EDIT GAME</span>
@@ -770,6 +770,7 @@ export class GameDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   refreshingPlayers = false;
   saving = false;
   isLoggedIn = false;
+  isAdmin = false;
   inWishlist = false;
   canDelete = false;
   showEdit = false;
@@ -801,6 +802,13 @@ export class GameDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     this.isLoggedIn = v;
     if (v) this.checkWishlist();
   });
+  this.api.isAdmin$.subscribe(v => {
+    this.isAdmin = v;
+    this.canDelete = v;
+    if (!v && this.activeTab === 'admin') {
+      this.activeTab = 'charts';
+    }
+  });
   const id = Number(this.route.snapshot.paramMap.get('id'));
   const appid = Number(this.route.snapshot.paramMap.get('appid'));
   if (appid) {
@@ -827,8 +835,7 @@ export class GameDetailComponent implements OnInit, AfterViewInit, OnDestroy {
           this.currentPlayers = game.latest_players.current;
           this.peakPlayers = game.latest_players.peak;
         }
-        const username = localStorage.getItem('username');
-        this.canDelete = !!username && game.created_by_username === username;
+        this.canDelete = this.isAdmin;
         this.loading = false;
         if (this.isLoggedIn) this.checkWishlist();
         this.loadStats(id);

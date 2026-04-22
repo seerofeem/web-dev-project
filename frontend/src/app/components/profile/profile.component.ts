@@ -20,7 +20,7 @@ import { UserProfile, Game } from '../../interfaces/models';
           <div class="page-head">
             <div>
               <div class="page-title">{{ profile.username }}</div>
-              <div class="page-sub">PLAYER PROFILE · JOINED {{ profile.created_at | date:'longDate' }}</div>
+              <div class="page-sub">{{ profile.role | uppercase }} PROFILE · JOINED {{ profile.created_at | date:'longDate' }}</div>
             </div>
           </div>
 
@@ -32,10 +32,11 @@ import { UserProfile, Game } from '../../interfaces/models';
                 <span>{{ profile.username.slice(0, 1).toUpperCase() }}</span>
               }
             </div>
-            <div class="profile-copy">
-              <div class="profile-name">{{ profile.username }}</div>
-              <div class="profile-line">Steam ID {{ profile.steam_id || 'not linked' }}</div>
-            </div>
+              <div class="profile-copy">
+                <div class="profile-name">{{ profile.username }}</div>
+                <div class="profile-line">Email {{ profile.email || 'not set' }}</div>
+                <div class="profile-line">Steam ID {{ profile.steam_id || 'not linked' }}</div>
+              </div>
             <div class="profile-metrics">
               <div><span>Wishlist</span><strong>{{ profile.wishlist.length }}</strong></div>
               <div><span>Free games</span><strong>{{ wishlistFreeCount() }}</strong></div>
@@ -87,6 +88,10 @@ import { UserProfile, Game } from '../../interfaces/models';
                     <span class="info-val">{{ profile.email }}</span>
                   </div>
                   <div class="info-row">
+                    <span class="info-key">ROLE</span>
+                    <span class="info-val">{{ profile.role }}</span>
+                  </div>
+                  <div class="info-row">
                     <span class="info-key">WISHLIST</span>
                     <span class="info-val">{{ profile.wishlist.length }} games</span>
                   </div>
@@ -99,6 +104,14 @@ import { UserProfile, Game } from '../../interfaces/models';
 
               <div class="card">
                 <div class="card-title">UPDATE PROFILE</div>
+                <div class="f-group">
+                  <label class="f-label">Username</label>
+                  <input class="f-input" [(ngModel)]="editUsername" name="username" placeholder="your_username" />
+                </div>
+                <div class="f-group">
+                  <label class="f-label">Email</label>
+                  <input class="f-input" [(ngModel)]="editEmail" name="email" placeholder="you@example.com" />
+                </div>
                 <div class="f-group">
                   <label class="f-label">Steam ID (optional)</label>
                   <input class="f-input" [(ngModel)]="editSteamId" name="steamId" placeholder="76561198..." />
@@ -155,6 +168,8 @@ export class ProfileComponent implements OnInit {
   loading = true;
   errorMsg = '';
   successMsg = '';
+  editUsername = '';
+  editEmail = '';
   editSteamId = '';
   editAvatarUrl = '';
   savingProfile = false;
@@ -165,6 +180,8 @@ export class ProfileComponent implements OnInit {
     this.api.getProfile().subscribe({
       next: (p) => {
         this.profile = p;
+        this.editUsername = p.username;
+        this.editEmail = p.email;
         this.editSteamId = p.steam_id;
         this.editAvatarUrl = p.avatar_url;
         this.loading = false;
@@ -188,18 +205,24 @@ export class ProfileComponent implements OnInit {
 
   saveProfile(): void {
     this.savingProfile = true;
+    this.errorMsg = '';
     this.api.updateProfile({
+      username: this.editUsername.trim(),
+      email: this.editEmail.trim(),
       steam_id: this.editSteamId,
       avatar_url: this.editAvatarUrl
     }).subscribe({
       next: (profile) => {
         this.profile = profile;
+        this.editUsername = profile.username;
+        this.editEmail = profile.email;
         this.successMsg = 'Profile updated!';
         this.savingProfile = false;
         setTimeout(() => this.successMsg = '', 3000);
       },
-      error: () => {
-        this.errorMsg = 'Failed to update profile.';
+      error: (err) => {
+        const errors = err.error ?? {};
+        this.errorMsg = errors.username?.[0] ?? errors.email?.[0] ?? errors.detail ?? 'Failed to update profile.';
         this.savingProfile = false;
       }
     });
