@@ -472,7 +472,35 @@ def steam_top_history(request, appid):
     serializer = SteamTopSnapshotSerializer(snapshots, many=True)
     return Response(serializer.data)
 
-
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def steam_upcoming_games(request):
+    try:
+        url = "https://store.steampowered.com/api/featuredcategories/?cc=us&l=english"
+        response = requests.get(url, timeout=10, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; SteamDBMini/1.0)"
+        })
+        response.raise_for_status()
+        data = response.json()
+        items = data.get('coming_soon', {}).get('items', [])
+        results = []
+        for item in items:
+            aid = item.get('id') or item.get('appid') or 0
+            if not aid:
+                continue
+            price = item.get('final_price', 0)
+            release = item.get('release_date') or '—'
+            results.append({
+                'appid': aid,
+                'name': item.get('name', f'App {aid}'),
+                'header_image': f"https://cdn.akamai.steamstatic.com/steam/apps/{aid}/header.jpg",
+                'release_date': release,
+                'final_price': price,
+                'is_free': item.get('is_free_game', False) or price == 0,
+            })
+        return Response(results)
+    except Exception as e:
+        return Response({'error': str(e)}, status=502)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def steam_top_games(request):

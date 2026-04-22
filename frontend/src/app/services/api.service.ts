@@ -128,6 +128,9 @@ export class ApiService {
   addToWishlist(gameId: number): Observable<any> {
     return this.http.post(`${this.API}/profile/wishlist/${gameId}/`, {});
   }
+  getUpcomingGames(): Observable<any[]> {
+  return this.http.get<any[]>(`${this.API}/steam/upcoming/`);
+  }
 
   removeFromWishlist(gameId: number): Observable<any> {
     return this.http.delete(`${this.API}/profile/wishlist/${gameId}/`);

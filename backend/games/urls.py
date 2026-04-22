@@ -5,7 +5,7 @@ urlpatterns = [
     # ── Games CRUD ─────────────────────────────────────────────────
     path('games/', views.game_list_create, name='game-list-create'),          # FBV #1
     path('games/<int:pk>/', views.GameDetailView.as_view(), name='game-detail'),  # CBV #1
-
+    path('steam/upcoming/', views.steam_upcoming_games, name='steam-upcoming'),
     # ── Steam API Proxy ────────────────────────────────────────────
     path('steam/players/<int:appid>/', views.steam_online_stats, name='steam-players'),  # FBV #2
     path('steam/appinfo/<int:appid>/', views.SteamGameInfoView.as_view(), name='steam-appinfo'),  # CBV #2

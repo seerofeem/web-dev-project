@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, ElementRef, EventEmitter, HostListener, OnDestroy, OnInit, Output, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { Subscription, filter } from 'rxjs';
@@ -45,160 +45,124 @@ interface SearchResult {
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   template: `
-    <header class="nav-shell">
-      <div class="status-strip">
-        <div class="status-cluster">
-          <span class="status-tag">service</span>
-          <span class="status-pill" [class.online]="topGames.length > 0">
-            <span></span>{{ topGames.length ? 'live feed online' : 'waiting for charts' }}
-          </span>
-          <span class="status-item">local {{ games.length | number }}</span>
-          <span class="status-item">players {{ totalTopPlayers | number }}</span>
-          <span class="status-item">leader {{ leaderTitle() }}</span>
-        </div>
+  <header class="nav-shell">
+    <div class="status-strip">
+      <div class="status-cluster">
+        <span class="status-tag">service</span>
+        <span class="status-pill" [class.online]="topGames.length > 0">
+          <span></span>{{ topGames.length ? 'live feed online' : 'waiting for charts' }}
+        </span>
+        <span class="status-item">local {{ games.length | number }}</span>
+        <span class="status-item">players {{ totalTopPlayers | number }}</span>
+        <span class="status-item">leader {{ leaderTitle() }}</span>
+      </div>
+      <div class="status-cluster right">
+        <span class="status-item">route {{ routeLabel() }}</span>
+        <span class="status-item">session {{ isLoggedIn ? username : 'guest' }}</span>
+        <button class="status-shortcut" type="button" (click)="focusSearch()">/ instant search</button>
+      </div>
+    </div>
 
-        <div class="status-cluster right">
-          <span class="status-item">route {{ routeLabel() }}</span>
-          <span class="status-item">session {{ isLoggedIn ? username : 'guest' }}</span>
-          <button class="status-shortcut" type="button" (click)="focusSearch()">
-            / instant search
+    <div class="toolbar-row">
+      <button class="hamburger" type="button" (click)="toggleSidebar.emit()">☰</button>
+
+      <a class="nav-brand" routerLink="/">
+        <span class="brand-icon">⬡</span>
+        <span class="brand-copy">
+          <span class="brand-title">STEAM<span class="accent">DB</span> MINI</span>
+          <span class="brand-sub">catalog desk · charts · pricing · metadata</span>
+        </span>
+      </a>
+
+      <div class="nav-auth">
+        @if (isLoggedIn) {
+          <button class="session-card" type="button" (click)="goToProfile()">
+            <span class="session-eyebrow">profile desk</span>
+            <strong>{{ username }}</strong>
+            <small>wishlist + account tools</small>
           </button>
-        </div>
-      </div>
-
-      <div class="toolbar-row">
-        <a class="nav-brand" routerLink="/">
-          <span class="brand-icon">⬡</span>
-          <span class="brand-copy">
-            <span class="brand-title">STEAM<span class="accent">DB</span> MINI</span>
-            <span class="brand-sub">catalog desk · charts · pricing · metadata</span>
-          </span>
-        </a>
-
-        <nav class="service-links" aria-label="Primary navigation">
-          @for (link of primaryLinks; track link.id) {
-            <button
-              class="service-link"
-              type="button"
-              [class.active]="isLinkActive(link)"
-              (click)="openLink(link)">
-              <span>{{ link.label }}</span>
-              <small>{{ link.hint }}</small>
-            </button>
-          }
-        </nav>
-
-        <div class="search-shell" #searchShell [class.open]="searchOpen">
-          <div class="search-box">
-            <span class="search-prefix">cmd</span>
-            <input
-              #navSearch
-              class="search-input"
-              type="text"
-              name="navSearch"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="Search panel, local game, Steam appid..."
-              [(ngModel)]="searchQuery"
-              (focus)="openSearch()"
-              (input)="onSearchInput()" />
-            @if (searchQuery) {
-              <button class="search-clear" type="button" (click)="clearSearch()">clear</button>
-            } @else {
-              <button class="search-slash" type="button" (click)="focusSearch()">/</button>
-            }
-          </div>
-
-          @if (searchOpen) {
-            <div class="search-popover">
-              <div class="search-head">
-                <div>
-                  <div class="search-title">Instant Search</div>
-                  <div class="search-sub">
-                    {{ searchQuery.trim() ? 'Live results for navigation, local catalog, and Steam shortcuts.' : 'Type a title or app id, or jump straight into any section.' }}
-                  </div>
-                </div>
-                <div class="search-meta">{{ searchResults.length }} results</div>
-              </div>
-
-              <div class="search-results">
-                @for (result of searchResults; track result.id; let i = $index) {
-                  <button
-                    class="result-row"
-                    type="button"
-                    [class.active]="i === activeSearchIndex"
-                    (mouseenter)="activeSearchIndex = i"
-                    (mousedown)="activateSearchResult(result)">
-                    <span class="result-kind">{{ result.kind }}</span>
-                    <span class="result-copy">
-                      <strong>{{ result.title }}</strong>
-                      <small>{{ result.subtitle }}</small>
-                    </span>
-                    <span class="result-meta">{{ result.meta }}</span>
-                  </button>
-                }
-              </div>
-
-              <div class="search-foot">
-                <span>Enter to open</span>
-                <span>Arrow keys to switch</span>
-                <span>Esc to close</span>
-              </div>
-            </div>
-          }
-        </div>
-
-        <div class="nav-auth">
-          @if (isLoggedIn) {
-            <button class="session-card" type="button" (click)="goToProfile()">
-              <span class="session-eyebrow">profile desk</span>
-              <strong>{{ username }}</strong>
-              <small>wishlist + account tools</small>
-            </button>
-            <button class="btn-logout" type="button" (click)="onLogout()">log out</button>
-          } @else {
-            <button class="session-card guest" type="button" (click)="goToLogin()">
-              <span class="session-eyebrow">guest session</span>
-              <strong>Sign in</strong>
-              <small>import apps + sync profile</small>
-            </button>
-          }
-        </div>
-      </div>
-
-      <div class="category-row">
-        @for (category of categories; track category.id) {
-          <button
-            class="category-card"
-            type="button"
-            [class.active]="isCategoryActive(category)"
-            (click)="openCategory(category)">
-            <span class="category-code">{{ category.code }}</span>
-            <span class="category-copy">
-              <strong>{{ category.title }}</strong>
-              <small>{{ category.note }}</small>
-            </span>
-            <span class="category-stat">{{ categoryStat(category) }}</span>
+          <button class="btn-logout" type="button" (click)="onLogout()">log out</button>
+        } @else {
+          <button class="session-card guest" type="button" (click)="goToLogin()">
+            <span class="session-eyebrow">guest session</span>
+            <strong>Sign in</strong>
+            <small>import apps + sync profile</small>
           </button>
         }
       </div>
-    </header>
-  `,
+
+      <div class="search-shell" #searchShell [class.open]="searchOpen">
+        <div class="search-box">
+          <span class="search-prefix">cmd</span>
+          <input
+            #navSearch
+            class="search-input"
+            type="text"
+            name="navSearch"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Search panel, local game, Steam appid..."
+            [(ngModel)]="searchQuery"
+            (focus)="openSearch()"
+            (input)="onSearchInput()" />
+          @if (searchQuery) {
+            <button class="search-clear" type="button" (click)="clearSearch()">clear</button>
+          } @else {
+            <button class="search-slash" type="button" (click)="focusSearch()">/</button>
+          }
+        </div>
+
+        @if (searchOpen) {
+        <div class="search-overlay" (click)="closeSearch()"></div>
+          <div class="search-popover">
+            <div class="search-head">
+              <div>
+                <div class="search-title">Instant Search</div>
+                <div class="search-sub">
+                  {{ searchQuery.trim() ? 'Live results for navigation, local catalog, and Steam shortcuts.' : 'Type a title or app id, or jump straight into any section.' }}
+                </div>
+              </div>
+              <div class="search-meta">{{ searchResults.length }} results</div>
+            </div>
+            <div class="search-results">
+              @for (result of searchResults; track result.id; let i = $index) {
+                <button
+                  class="result-row"
+                  type="button"
+                  [class.active]="i === activeSearchIndex"
+                  (mouseenter)="activeSearchIndex = i"
+                  (mousedown)="activateSearchResult(result)">
+                  <span class="result-kind">{{ result.kind }}</span>
+                  <span class="result-copy">
+                    <strong>{{ result.title }}</strong>
+                    <small>{{ result.subtitle }}</small>
+                  </span>
+                  <span class="result-meta">{{ result.meta }}</span>
+                </button>
+              }
+            </div>
+            <div class="search-foot">
+              <span>Enter to open</span>
+              <span>Arrow keys to switch</span>
+              <span>Esc to close</span>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  </header>
+`,
   styles: [`
     .nav-shell {
-      backdrop-filter: blur(18px);
-      background:
-        linear-gradient(180deg, rgba(19, 24, 30, 0.98), rgba(15, 19, 24, 0.94)),
-        rgba(15, 19, 24, 0.94);
-      border-bottom: 1px solid rgba(64, 81, 95, 0.78);
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      padding: 8px 18px 12px;
-      position: static;
-      top: 0;
-      z-index: 220;
-    }
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 18px;
+  backdrop-filter: blur(18px);
+  background: linear-gradient(180deg, rgba(19,24,30,0.98), rgba(15,19,24,0.94));
+  border-bottom: 1px solid rgba(64,81,95,0.78);
+  position: static;
+}
 
     .status-strip,
     .toolbar-row,
@@ -211,7 +175,17 @@ interface SearchResult {
       display: flex;
       gap: 10px;
     }
-
+    .hamburger {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--secondary-text);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 8px 12px;
+  transition: background 0.15s, color 0.15s;
+}
+.hamburger:hover { background: var(--accent-soft); color: var(--accent-hover); }
     .status-strip {
       justify-content: space-between;
       min-height: 24px;
@@ -317,9 +291,13 @@ interface SearchResult {
     }
 
     .toolbar-row {
-      align-items: stretch;
-      gap: 14px;
-    }
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+.nav-auth { flex: 0 0 auto; }
+.search-shell { flex: 1 1 340px; min-width: 280px; position: relative; }
 
     .nav-brand {
       align-items: center;
@@ -430,11 +408,10 @@ interface SearchResult {
     }
 
     .search-shell {
-      flex: 1 1 340px;
-      min-width: 280px;
-      position: relative;
-    }
-
+  flex: 1 1 340px;
+  min-width: 280px;
+  position: static;
+}
     .search-box {
       background: linear-gradient(180deg, rgba(18, 24, 30, 0.98), rgba(12, 17, 21, 0.98));
       border: 1px solid rgba(64, 81, 95, 0.7);
@@ -486,20 +463,27 @@ interface SearchResult {
       color: var(--accent-hover);
     }
 
-    .search-popover {
-      background:
-        radial-gradient(circle at top left, rgba(102, 192, 244, 0.14), transparent 48%),
-        linear-gradient(180deg, rgba(21, 26, 31, 0.98), rgba(12, 16, 21, 0.98));
-      border: 1px solid rgba(64, 81, 95, 0.76);
-      border-radius: 14px;
-      box-shadow: 0 22px 48px rgba(0, 0, 0, 0.4);
-      left: 0;
-      margin-top: 8px;
-      overflow: hidden;
-      position: absolute;
-      right: 0;
-      top: 100%;
-    }
+    .search-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 9998;
+}
+
+.search-popover {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 680px;
+  max-width: 95vw;
+  background: linear-gradient(180deg, rgba(21,26,31,0.99), rgba(12,16,21,0.99));
+  border: 1px solid rgba(64,81,95,0.76);
+  border-radius: 14px;
+  box-shadow: 0 22px 48px rgba(0,0,0,0.9);
+  overflow: hidden;
+  z-index: 9999;
+}
 
     .search-head,
     .search-foot {
@@ -531,7 +515,6 @@ interface SearchResult {
       overflow-y: auto;
       padding: 8px;
     }
-
     .result-row {
       align-items: center;
       background: transparent;
@@ -694,10 +677,7 @@ interface SearchResult {
         flex-wrap: wrap;
       }
 
-      .search-shell {
-        flex-basis: 100%;
-        order: 4;
-      }
+      .search-shell { flex: 1 1 340px; min-width: 280px; position: static; }
 
       .category-row {
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -770,6 +750,7 @@ interface SearchResult {
 export class NavbarComponent implements OnInit, OnDestroy {
   @ViewChild('navSearch') navSearch?: ElementRef<HTMLInputElement>;
   @ViewChild('searchShell') searchShell?: ElementRef<HTMLElement>;
+  @Output() toggleSidebar = new EventEmitter<void>();
 
   isLoggedIn = false;
   username = '';

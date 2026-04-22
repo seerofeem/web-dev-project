@@ -1,10 +1,11 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../../services/api.service';
 import { SteamTopGame, SteamTopSnapshot } from '../../interfaces/models';
 import { ChangeDetectorRef } from '@angular/core';
-type View = 'overview' | 'charts' | 'prices';
+
+type View = 'overview' | 'charts' | 'prices' | 'upcoming';
 
 interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
 
@@ -40,6 +41,7 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
         <button [class.active]="activeView === 'overview'" (click)="activeView = 'overview'">Overview</button>
         <button [class.active]="activeView === 'charts'" (click)="activeView = 'charts'">Charts</button>
         <button [class.active]="activeView === 'prices'" (click)="activeView = 'prices'; loadPrices()">Prices</button>
+        <button [class.active]="activeView === 'upcoming'" (click)="activeView = 'upcoming'; loadUpcoming()">Upcoming</button>
       </nav>
 
       <!-- OVERVIEW -->
@@ -219,6 +221,36 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
     </div>
   </main>
 }
+  @if (activeView === 'upcoming') {
+  <main class="top-games-wrap">
+    <div class="table-header">
+      <div>
+        <h1 class="table-title">Upcoming Releases</h1>
+        <p class="table-sub">Steam coming soon · {{ upcomingGames.length }} games</p>
+      </div>
+    </div>
+    @if (upcomingLoading) {
+      <div class="loading-bar"><div class="loading-fill"></div></div>
+    }
+    <div class="price-grid">
+      @for (g of upcomingGames; track g.appid) {
+        <button class="price-block" (click)="goToSteamGame(g.appid)">
+          <img [src]="g.header_image" (error)="onImageError($event)" /> />
+          <div class="price-block-body">
+            <div class="price-block-name">{{ g.name }}</div>
+            <div class="price-block-players">{{ g.release_date || 'TBA' }}</div>
+          </div>
+          <div class="price-tag" [class.free]="g.is_free">
+            {{ formatPrice(g) }}
+            @if (g.discount_percent > 0) {
+              <span class="discount-badge">-{{ g.discount_percent }}%</span>
+            }
+          </div>
+        </button>
+      }
+    </div>
+  </main>
+}
   `,  
                 
   styles: [`
@@ -263,7 +295,7 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
       color: var(--accent-hover, #66c0f4);
     }
     .view-tabs button:hover:not(.active) { color: var(--primary-text, #c6d4df); }
-
+    .discount-badge { background: var(--success, #5ba85a); border-radius: 3px; color: #000; font-size: 10px; margin-left: 4px; padding: 1px 4px; }
     .top-games-wrap { padding: 20px; }
     .table-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
     .table-title { font-family: 'Rajdhani', sans-serif; font-size: 28px; font-weight: 700; color: var(--heading-text, #fff); margin: 0; }
@@ -399,7 +431,9 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly svgW = 800;
   readonly svgH = 300;
   readonly pad = { top: 20, right: 20, bottom: 28, left: 60 };
-
+  
+  upcomingGames: any[] = [];
+  upcomingLoading = false;
   priceSort: 'high' | 'low' = 'high';
   priceCache: Record<number, { name: string; price: string; is_free: boolean; loading: boolean }> = {};
   private topGamesTimer: ReturnType<typeof setInterval> | null = null;
@@ -414,12 +448,16 @@ export class HomeComponent implements OnInit, OnDestroy {
     440: 'Team Fortress 2'
   };
 
-  constructor(private api: ApiService, private router: Router, private cdr: ChangeDetectorRef) {}
+  constructor(private api: ApiService, private router: Router, private cdr: ChangeDetectorRef, private route: ActivatedRoute) {}
 
   ngOnInit(): void {
-    this.loadTopGames();
-    this.topGamesTimer = setInterval(() => this.loadTopGames(), this.refreshMs);
-  }
+  this.route.queryParamMap.subscribe((params: any) => {
+    const view = params.get('view') as View | null;
+    if (view) this.activeView = view;
+  });
+  this.loadTopGames();
+  this.topGamesTimer = setInterval(() => this.loadTopGames(), this.refreshMs);
+}
 
   ngOnDestroy(): void {
     if (this.topGamesTimer) clearInterval(this.topGamesTimer);
@@ -450,7 +488,25 @@ error: () => { this.loadingTop = false; this.cdr.detectChanges(); }
     return this.priceSort === 'high' ? pb - pa : pa - pb;
   });
 }
+  loadUpcoming(): void {
+  if (this.upcomingGames.length) return;
+  this.upcomingLoading = true;
+  this.api.getUpcomingGames().subscribe({
+    next: (data) => {
+      this.upcomingGames = data;
+      this.upcomingLoading = false;
+      this.cdr.detectChanges();
+    },
+    error: () => { this.upcomingLoading = false; this.cdr.detectChanges(); }
+  });
+}
 
+
+formatPrice(item: any): string {
+  if (item.is_free) return 'Free';
+  if (!item.final_price) return 'TBA';
+  return '$' + (item.final_price / 100).toFixed(2);
+}
 loadPrices(): void {
   this.topGames.forEach((g, i) => {
     if (this.priceCache[g.appid]?.loading === false) return;
@@ -577,8 +633,10 @@ error: () => { this.chartLoading = false; this.cdr.detectChanges(); }
   }
 
   onImageError(event: Event): void {
-    (event.target as HTMLImageElement).style.display = 'none';
-  }
+  const img = event.target as HTMLImageElement;
+  img.src = 'https://cdn.akamai.steamstatic.com/steam/apps/0/header.jpg';
+  img.onerror = null;
+}
 
   private hydrateNames(rows: SteamTopGame[]): void {
     rows.forEach(row => {
