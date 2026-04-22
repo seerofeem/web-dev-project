@@ -99,7 +99,10 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
-
+CORS_ALLOWED_ORIGINS = [
+    'https://web-dev-project-production.up.railway.app',
+]
+ALLOWED_HOSTS = ['https://web-dev-project-production.up.railway.app']
 
 STEAMDB_SYNC_ADMIN_USERNAMES = [
     username.strip().lower()
