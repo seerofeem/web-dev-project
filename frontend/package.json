@@ -7,13 +7,7 @@
     "start": "ng serve --port 4200",
     "prebuild": "node scripts/generate-runtime-config.mjs",
     "build": "ng build",
-    "watch": "ng build --watch --configuration development",
-    "vercel:build": "node scripts/vercel-build.mjs",
-    "vercel:prepare-output": "node scripts/prepare-vercel-output.mjs",
-    "redeploy:preview": "node scripts/fast-redeploy.mjs",
-    "redeploy:preview:watch": "node scripts/fast-redeploy.mjs --watch",
-    "redeploy:prod": "node scripts/fast-redeploy.mjs --prod",
-    "redeploy:prod:watch": "node scripts/fast-redeploy.mjs --watch --prod"
+    "watch": "ng build --watch --configuration development"
   },
   "private": true,
   "dependencies": {
