@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { ApiService } from '../../services/api.service';
 import { SteamTopGame, SteamTopSnapshot } from '../../interfaces/models';
 import { ChangeDetectorRef } from '@angular/core';
-type View = 'overview' | 'charts';
+type View = 'overview' | 'charts' | 'prices';
 
 interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
 
@@ -39,6 +39,7 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
       <nav class="view-tabs">
         <button [class.active]="activeView === 'overview'" (click)="activeView = 'overview'">Overview</button>
         <button [class.active]="activeView === 'charts'" (click)="activeView = 'charts'">Charts</button>
+        <button [class.active]="activeView === 'prices'" (click)="activeView = 'prices'; loadPrices()">Prices</button>
       </nav>
 
       <!-- OVERVIEW -->
@@ -189,7 +190,37 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
         </main>
       }
     </div>
-  `,
+
+    @if (activeView === 'prices') {
+  <main class="top-games-wrap">
+    <div class="table-header">
+      <div>
+        <h1 class="table-title">Game Prices</h1>
+        <p class="table-sub">Steam store prices · {{ topGames.length }} games</p>
+      </div>
+      <div class="price-sort-btns">
+        <button [class.active]="priceSort === 'high'" (click)="priceSort = 'high'">Highest first</button>
+        <button [class.active]="priceSort === 'low'" (click)="priceSort = 'low'">Lowest first</button>
+      </div>
+    </div>
+    <div class="price-grid">
+      @for (g of sortedByPrice; track g.appid) {
+        <button class="price-block" (click)="goToSteamGame(g.appid)">
+          <img [src]="steamHeaderUrl(g.appid)" (error)="onImageError($event)" />
+          <div class="price-block-body">
+            <div class="price-block-name">{{ priceCache[g.appid]?.name || gameTitleForApp(g.appid) }}</div>
+            <div class="price-block-players">{{ g.concurrent_in_game | number }} online</div>
+          </div>
+          <div class="price-tag" [class.free]="priceCache[g.appid]?.is_free">
+            {{ priceCache[g.appid]?.loading ? '...' : (priceCache[g.appid]?.price || '—') }}
+          </div>
+        </button>
+      }
+    </div>
+  </main>
+}
+  `,  
+                
   styles: [`
     :host { display: block; }
 
@@ -199,6 +230,19 @@ interface ChartPoint { x: number; y: number; value: number; timestamp: number; }
       padding: 12px 20px 0;
       border-bottom: 1px solid var(--border, #25354b);
     }
+      .price-sort-btns { display: flex; gap: 8px; }
+.price-sort-btns button { background: transparent; border: 1px solid var(--border, #25354b); border-radius: 4px; color: var(--secondary-text, #8ca0b3); cursor: pointer; font-family: 'Share Tech Mono', monospace; font-size: 10px; padding: 6px 12px; transition: all 0.15s; }
+.price-sort-btns button.active { border-color: var(--accent, #57b8c7); color: var(--accent-hover, #66c0f4); }
+
+.price-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.price-block { background: var(--surface, #1b2838); border: 1px solid var(--border, #25354b); border-radius: 6px; cursor: pointer; display: flex; flex-direction: column; overflow: hidden; text-align: left; transition: border-color 0.15s, transform 0.15s; }
+.price-block:hover { border-color: var(--accent, #57b8c7); transform: translateY(-2px); }
+.price-block img { width: 100%; height: 90px; object-fit: cover; display: block; }
+.price-block-body { padding: 8px 10px 4px; flex: 1; }
+.price-block-name { color: var(--heading-text, #fff); font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.price-block-players { color: var(--success, #5ba85a); font-family: 'Share Tech Mono', monospace; font-size: 10px; margin-top: 2px; }
+.price-tag { background: var(--surface-sunken, #131a22); border-top: 1px solid var(--border, #25354b); color: var(--accent, #57b8c7); font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 700; padding: 6px 10px; text-align: right; }
+    .price-tag.free { color: var(--success, #5ba85a); }
     .view-tabs button {
       background: transparent;
       border: none;
@@ -356,6 +400,8 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly svgH = 300;
   readonly pad = { top: 20, right: 20, bottom: 28, left: 60 };
 
+  priceSort: 'high' | 'low' = 'high';
+  priceCache: Record<number, { name: string; price: string; is_free: boolean; loading: boolean }> = {};
   private topGamesTimer: ReturnType<typeof setInterval> | null = null;
   private readonly refreshMs = 5000;
 
@@ -393,7 +439,62 @@ export class HomeComponent implements OnInit, OnDestroy {
 error: () => { this.loadingTop = false; this.cdr.detectChanges(); }
     });
   }
+  get sortedByPrice() {
+  const games = this.topGames.map(g => ({
+    ...g,
+    priceData: this.priceCache[g.appid]
+  }));
+  return games.sort((a, b) => {
+    const pa = a.priceData?.is_free ? 0 : parseFloat(a.priceData?.price?.replace(/[^0-9.]/g, '') || '0');
+    const pb = b.priceData?.is_free ? 0 : parseFloat(b.priceData?.price?.replace(/[^0-9.]/g, '') || '0');
+    return this.priceSort === 'high' ? pb - pa : pa - pb;
+  });
+}
 
+loadPrices(): void {
+  this.topGames.forEach((g, i) => {
+    if (this.priceCache[g.appid]?.loading === false) return;
+    this.priceCache[g.appid] = { name: this.gameTitleForApp(g.appid), price: '...', is_free: false, loading: true };
+    
+    const tryFetch = (delay: number) => {
+      setTimeout(() => {
+        this.api.getSteamAppInfo(g.appid).subscribe({
+          next: (data: any) => {
+            this.priceCache[g.appid] = {
+              name: data?.name || this.gameTitleForApp(g.appid),
+              price: data?.price_overview?.final_formatted || (data?.is_free ? 'Free' : '—'),
+              is_free: data?.is_free || false,
+              loading: false
+            };
+            this.cdr.detectChanges();
+          },
+          error: () => {
+            // retry once after 3 seconds
+            setTimeout(() => {
+              this.api.getSteamAppInfo(g.appid).subscribe({
+                next: (data: any) => {
+                  this.priceCache[g.appid] = {
+                    name: data?.name || this.gameTitleForApp(g.appid),
+                    price: data?.price_overview?.final_formatted || (data?.is_free ? 'Free' : '—'),
+                    is_free: data?.is_free || false,
+                    loading: false
+                  };
+                  this.cdr.detectChanges();
+                },
+                error: () => {
+                  this.priceCache[g.appid] = { name: this.gameTitleForApp(g.appid), price: '—', is_free: false, loading: false };
+                  this.cdr.detectChanges();
+                }
+              });
+            }, 3000);
+          }
+        });
+      }, delay);
+    };
+
+    tryFetch(i * 500);
+  });
+}
   selectGame(appid: number): void {
     this.selectedAppid = appid;
     this.chartSnapshots = [];

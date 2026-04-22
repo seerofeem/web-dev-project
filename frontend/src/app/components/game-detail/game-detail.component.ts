@@ -1,4 +1,4 @@
-import { Component, OnInit, AfterViewInit, ElementRef, ViewChild } from '@angular/core';
+import { Component, OnInit, AfterViewInit, OnDestroy, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -713,7 +713,8 @@ interface ActivityFeedItem {
         grid-template-columns: 1fr;
       }
     }
-
+    .data-table-wrap { overflow: auto; max-height: 400px; }
+    .data-table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface, #1b2228); }
     .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
     @media (max-width: 700px) {
       .stats-row { grid-template-columns: repeat(2, 1fr); }
@@ -756,7 +757,8 @@ interface ActivityFeedItem {
     .nf-text { font-family: 'Share Tech Mono', monospace; font-size: 14px; color: var(--muted-text); margin-bottom: 8px; }
   `]
 })
-export class GameDetailComponent implements OnInit, AfterViewInit {
+export class GameDetailComponent implements OnInit, AfterViewInit, OnDestroy {
+  private playersTimer: any = null
   @ViewChild('chartCanvas') chartCanvas!: ElementRef<HTMLCanvasElement>;
 
   game: Game | null = null;
@@ -791,7 +793,7 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
     private route: ActivatedRoute,
     private router: Router,
     private api: ApiService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
@@ -807,7 +809,9 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
     this.loadGame(id);
   }
   }
-
+  ngOnDestroy(): void {
+  if (this.playersTimer) clearInterval(this.playersTimer);
+}
   ngAfterViewInit(): void {
     // Chart is drawn after data loads
   }
@@ -846,10 +850,18 @@ export class GameDetailComponent implements OnInit, AfterViewInit {
   }
 loadGameByAppid(appid: number): void {
   this.loading = true;
-  Promise.all([
-    this.api.getSteamAppInfo(appid).toPromise(),
-    this.api.getSteamAppDeepData(appid).toPromise()
-  ]).then(([info, deep]: [any, any]) => {
+
+  const infoPromise = this.api.getSteamAppInfo(appid).toPromise().catch(() => null);
+  const deepPromise = this.api.getSteamAppDeepData(appid).toPromise().catch(() => null);
+
+  Promise.all([infoPromise, deepPromise]).then(([info, deep]: [any, any]) => {
+    if (!info && !deep) {
+      this.errorMsg = 'Could not load data for this app.';
+      this.loading = false;
+      this.cdr.detectChanges();
+      return;
+    }
+
     this.steamDetail = deep as any;
 
     this.game = {
@@ -868,26 +880,31 @@ loadGameByAppid(appid: number): void {
       latest_players: { current: 0, peak: 0 },
     } as any;
 
-
     this.currentPlayers = 0;
     this.peakPlayers = Number(deep?.peak_players ?? 0);
-    setInterval(() => {
+
     this.api.getSteamPlayers(appid).subscribe({
-      next: (res: any) => {
+      next: (res) => {
         this.currentPlayers = res.current_players ?? 0;
         this.peakPlayers = Math.max(this.peakPlayers, this.currentPlayers);
         this.cdr.detectChanges();
       }
     });
-  }, 1000)
+
+    this.playersTimer = setInterval(() => {
+      this.api.getSteamPlayers(appid).subscribe({
+        next: (res) => {
+          this.currentPlayers = res.current_players ?? 0;
+          this.peakPlayers = Math.max(this.peakPlayers, this.currentPlayers);
+          this.cdr.detectChanges();
+        }
+      });
+    }, 1000);
+
     this.canDelete = false;
     this.loading = false;
     this.loadingSteamDetail = false;
     this.rebuildActivityFeed();
-    this.cdr.detectChanges();
-  }).catch(() => {
-    this.errorMsg = 'Failed to load Steam app data.';
-    this.loading = false;
     this.cdr.detectChanges();
   });
 }
