@@ -24,4 +24,5 @@ urlpatterns = [
     # ── Profile & Wishlist ─────────────────────────────────────────
     path('profile/', views.my_profile, name='my-profile'),
     path('profile/wishlist/<int:game_id>/', views.wishlist_toggle, name='wishlist-toggle'),
+    path('admin/overview/', views.admin_overview, name='admin-overview'),
 ]

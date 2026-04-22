@@ -1,8 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const defaultApiUrl = 'http://localhost:8000/api';
-const configuredApiUrl = process.env.NG_APP_API_URL?.trim() || defaultApiUrl;
+const configuredApiUrl = process.env.NG_APP_API_URL?.trim() || '';
 const normalizedApiUrl = configuredApiUrl.replace(/\/+$/, '');
 
 const outputPath = resolve('src', 'assets', 'runtime-config.js');
@@ -14,4 +13,4 @@ writeFileSync(
   'utf8'
 );
 
-console.log(`[runtime-config] API URL: ${normalizedApiUrl}`);
+console.log(`[runtime-config] API URL override: ${normalizedApiUrl || '(auto)'}`);

@@ -3,12 +3,14 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 import re
 
 import requests
+from django.conf import settings
 from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
@@ -37,6 +39,41 @@ PRICE_REGIONS = [
     ("jp", "Japan"),
     ("br", "Brazil"),
 ]
+ADMIN_REQUIRED_DETAIL = 'Admin privileges required.'
+USER_ROLE_ADMIN = 'admin'
+USER_ROLE_USER = 'user'
+
+
+def is_admin_user(user) -> bool:
+    return sync_admin_user(user)
+
+
+def sync_admin_user(user) -> bool:
+    if not user or not user.is_authenticated:
+        return False
+
+    should_be_admin = bool(
+        user.is_superuser
+        or user.is_staff
+        or user.username.strip().lower() in set(settings.STEAMDB_SYNC_ADMIN_USERNAMES)
+    )
+
+    if should_be_admin and not user.is_staff:
+        user.is_staff = True
+        user.save(update_fields=['is_staff'])
+
+    return should_be_admin
+
+
+def serialize_auth_response(user, token) -> dict:
+    is_admin = sync_admin_user(user)
+    return {
+        'token': token.key,
+        'username': user.username,
+        'email': user.email,
+        'role': USER_ROLE_ADMIN if is_admin else USER_ROLE_USER,
+        'is_admin': is_admin,
+    }
 
 
 def fetch_current_players(appid: int) -> int:
@@ -274,6 +311,8 @@ def game_list_create(request):
     # POST — requires authentication
     if not request.user.is_authenticated:
         return Response({'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+    if not is_admin_user(request.user):
+        return Response({'detail': ADMIN_REQUIRED_DETAIL}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = GameModelSerializer(data=request.data)
     if serializer.is_valid():
@@ -327,6 +366,8 @@ class GameDetailView(APIView):
     def put(self, request, pk):
         if not request.user.is_authenticated:
             return Response({'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not is_admin_user(request.user):
+            return Response({'detail': ADMIN_REQUIRED_DETAIL}, status=status.HTTP_403_FORBIDDEN)
         game = self.get_object(pk)
         serializer = GameModelSerializer(game, data=request.data, partial=True)
         if serializer.is_valid():
@@ -337,6 +378,8 @@ class GameDetailView(APIView):
     def delete(self, request, pk):
         if not request.user.is_authenticated:
             return Response({'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not is_admin_user(request.user):
+            return Response({'detail': ADMIN_REQUIRED_DETAIL}, status=status.HTTP_403_FORBIDDEN)
         game = self.get_object(pk)
         game.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -360,6 +403,8 @@ class SteamGameInfoView(APIView):
         """Import a Steam game into the local database."""
         if not request.user.is_authenticated:
             return Response({'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not is_admin_user(request.user):
+            return Response({'detail': ADMIN_REQUIRED_DETAIL}, status=status.HTTP_403_FORBIDDEN)
         try:
             data = fetch_store_app_details(appid, "us")
             if not data:
@@ -406,7 +451,7 @@ def register(request):
     if serializer.is_valid():
         user = serializer.save()
         token, _ = Token.objects.get_or_create(user=user)
-        return Response({'token': token.key, 'username': user.username}, status=status.HTTP_201_CREATED)
+        return Response(serialize_auth_response(user, token), status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -418,7 +463,7 @@ def login_view(request):
     user = authenticate(username=username, password=password)
     if user:
         token, _ = Token.objects.get_or_create(user=user)
-        return Response({'token': token.key, 'username': user.username})
+        return Response(serialize_auth_response(user, token))
     return Response({'detail': 'Invalid credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
@@ -433,6 +478,7 @@ def logout_view(request):
 @permission_classes([IsAuthenticated])
 def my_profile(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    sync_admin_user(request.user)
     if request.method == 'GET':
         return Response(UserProfileSerializer(profile).data)
     serializer = UserProfileSerializer(profile, data=request.data, partial=True)
@@ -452,6 +498,40 @@ def wishlist_toggle(request, game_id):
         return Response({'detail': f'{game.title} added to wishlist.'})
     profile.wishlist.remove(game)
     return Response({'detail': f'{game.title} removed from wishlist.'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def admin_overview(request):
+    recent_users = list(User.objects.order_by('-date_joined')[:8])
+    profiles_by_user_id = {
+        profile.user_id: profile
+        for profile in UserProfile.objects.filter(user__in=recent_users)
+    }
+
+    return Response({
+        'counts': {
+            'users_total': User.objects.count(),
+            'admins_total': User.objects.filter(is_staff=True).count(),
+            'games_total': Game.objects.count(),
+            'wishlist_items_total': UserProfile.wishlist.through.objects.count(),
+            'active_sessions_total': Token.objects.count(),
+        },
+        'recent_users': [
+            {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'role': USER_ROLE_ADMIN if is_admin_user(user) else USER_ROLE_USER,
+                'is_admin': is_admin_user(user),
+                'date_joined': user.date_joined,
+                'last_login': user.last_login,
+                'avatar_url': profiles_by_user_id.get(user.id).avatar_url if profiles_by_user_id.get(user.id) else '',
+                'steam_id': profiles_by_user_id.get(user.id).steam_id if profiles_by_user_id.get(user.id) else '',
+            }
+            for user in recent_users
+        ],
+    })
 
 
 @api_view(['GET'])

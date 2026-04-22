@@ -4,6 +4,10 @@
   "outputDirectory": "dist/steamdb-mini-frontend/browser",
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "https://web-dev-project-backend-rkk9.onrender.com/api/$1"
+    },
+    {
       "handle": "filesystem"
     },
     {

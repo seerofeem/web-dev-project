@@ -588,6 +588,10 @@ interface SearchResult {
       border-color: var(--accent-border);
     }
 
+    .session-card.admin-link {
+      border-color: var(--warning-border);
+    }
+
     .session-card strong {
       font-size: 16px;
       line-height: 1;
@@ -753,6 +757,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
   @Output() toggleSidebar = new EventEmitter<void>();
 
   isLoggedIn = false;
+  isAdmin = false;
   username = '';
   games: Game[] = [];
   topGames: SteamTopGame[] = [];
@@ -803,6 +808,7 @@ export class NavbarComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.subscriptions.add(this.api.isLoggedIn$.subscribe(v => this.isLoggedIn = v));
+    this.subscriptions.add(this.api.isAdmin$.subscribe(v => this.isAdmin = v));
     this.subscriptions.add(this.api.username$.subscribe(v => this.username = v));
     this.subscriptions.add(
       this.router.events.pipe(filter(event => event instanceof NavigationEnd)).subscribe(event => {
@@ -932,13 +938,14 @@ export class NavbarComponent implements OnInit, OnDestroy {
       case 'updates':
         return `${Math.min(this.games.length, 12)} tracked`;
       case 'account':
-        return this.isLoggedIn ? 'online' : 'guest';
+        return this.isLoggedIn ? (this.isAdmin ? 'admin' : 'online') : 'guest';
       default:
         return 'ready';
     }
   }
 
   routeLabel(): string {
+    if (this.currentPath === '/admin') return 'admin';
     if (this.currentPath === '/profile') return 'profile';
     if (this.currentPath === '/login') return 'login';
     if (this.currentPath.startsWith('/games/')) return 'game detail';
@@ -1011,6 +1018,10 @@ export class NavbarComponent implements OnInit, OnDestroy {
 
   goToProfile(): void {
     this.router.navigate([this.isLoggedIn ? '/profile' : '/login']);
+  }
+
+  goToAdmin(): void {
+    this.router.navigate(this.isAdmin ? ['/admin'] : ['/']);
   }
 
   goToLogin(): void {

@@ -1,13 +1,13 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { ApiService } from '../../services/api.service';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="login-page">
       <div class="login-card">
@@ -145,7 +145,10 @@ export class LoginComponent {
     this.loading = true;
     this.errorMsg = '';
     this.api.login(this.loginData).subscribe({
-      next: () => { this.loading = false; this.router.navigate(['/']); },
+      next: (auth) => {
+        this.loading = false;
+        this.router.navigate([auth.is_admin ? '/admin' : '/profile']);
+      },
       error: (err) => {
         this.errorMsg = err.error?.detail ?? 'Login failed. Check your credentials.';
         this.loading = false;
@@ -162,7 +165,7 @@ export class LoginComponent {
     this.loading = true;
     this.errorMsg = '';
     this.api.register(this.registerData).subscribe({
-      next: () => { this.loading = false; this.router.navigate(['/']); },
+      next: () => { this.loading = false; this.router.navigate(['/profile']); },
       error: (err) => {
         const errors = err.error;
         this.errorMsg = errors?.username?.[0] ?? errors?.password?.[0] ?? errors?.detail ?? 'Registration failed.';

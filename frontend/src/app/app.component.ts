@@ -1,8 +1,12 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { NavbarComponent } from './components/navbar/navbar.component';
+<<<<<<< HEAD
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+=======
+import { ApiService } from './services/api.service';
+>>>>>>> 61dce4e3035476611a807490f3ad1be43d44d24b
 
 @Component({
   selector: 'app-root',
